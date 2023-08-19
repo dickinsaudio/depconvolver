@@ -108,8 +108,9 @@ void meters(char *s, int nWidth, int nHeight, int nIn, int nOut, float *pfIn, fl
 static int nWait;
 
 
-DAES67::Buffer daes67;
+
 DAES67::RTP    rtp;
+DAES67::Buffer daes67;
 
 void dep(void)
 {
@@ -183,11 +184,13 @@ void dep(void)
 		DSP.Chrono_N(1)->count(time);  
 
 	}
+	Debug("DEP Thread Finished");
 }
 
 
 int main(int argc, char * argv[])
 {
+	std::string g;
 
 	// PARSE COMMAND LINE OPTIONS
 	bool bClear=false, bReset=false, bDSP=false, bSilent=false, bLogY=false;
@@ -196,9 +199,9 @@ int main(int argc, char * argv[])
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
 
-	daes67.create("DAES67",8,8,2048);
-	rtp.set_buffer("DAES67");
-	rtp.start();
+	if (!daes67.create("DAES67",8,8,2048)) { std::cerr << "Cannot create DAES67 buffers\n"; return 0; };
+	if (!rtp.set_buffer("DAES67"))         { std::cerr << "Cannot create DAES67 engine\n"; return 0; };
+	if (!rtp.start())					   { std::cerr << "Cannot run DAES67 engine\n"; return 0; };	
 
 	while (argc>1)
 	{
@@ -301,9 +304,9 @@ int main(int argc, char * argv[])
 
 	}
 	usleep(50000);
-
 	if (!DSP.Owner() && DSP.Running()) printf("DSP STATE %12ld Rx=%d Tx=%d N=%d M=%d L=%d F=%d T=%d   Filters=%d UsedTaps=%d\n",DSP.Count(), DSP.Inputs(),DSP.Outputs(),DSP.BlockSize(),DSP.Blocks(),DSP.Latency(),DSP.Filters(),DSP.Threads(),DSP.Filters(),DSP.Taps());
 	if (!bKill)	std::cerr << "Unexpected Fail : Possibly Insufficient CPU for sustaining DSP" << std::endl;
+	Debug("Main loop exited and finishing normally");
 	return 0;
 }
 
