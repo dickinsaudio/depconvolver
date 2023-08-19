@@ -1,5 +1,3 @@
-#include "dante/Buffers.hpp"
-#include "dante/Priority.hpp"
 #include <assert.h>
 #include <signal.h>
 #include <string.h>
@@ -15,6 +13,9 @@
 #include <math.h>
 
 #include <ThreadedDSP.hpp>
+#include <buffer.hpp>
+#include <log.hpp>
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration - size and structure details
@@ -29,8 +30,6 @@
 
 char sScreen[256*256];
 ThreadedDSP DSP;
-Dante::Buffers Buffers;
-Dante::Runner  Runner(Buffers);
 float fIn [DSP.MaxChannels] = {};
 float fOut[DSP.MaxChannels] = {};
 bool bKill;
@@ -107,78 +106,69 @@ void meters(char *s, int nWidth, int nHeight, int nIn, int nOut, float *pfIn, fl
 
 static int nWait;
 
+
+
 void dep(void)
 {
-	setDantePriority("DepConvolver");
 
-	if (Buffers.connect("DanteEP", false)) 
-	{ std::cerr << "Cannot connect to DEP." << std::endl; exit(0); };
+	DAES67::Buffer daes67;
 
-	const Dante::buffer_header_t* header = Buffers.getHeader();
-	int 	 nTx 	 = std::min(DSP.Outputs(),(int)header->audio.num_tx_channels);
-	int 	 nRx 	 = std::min(DSP.Inputs(),(int)header->audio.num_rx_channels);
-	int 	 nReset  = -1;
-	uint64_t nPeriod = 0;
+	daes67.connect("DanteEP");
+
+	struct sched_param param;
+	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
+    int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+
+	int 	 nTx 	 = daes67.get()->audio.tx;
+	int 	 nRx 	 = daes67.get()->audio.rx;
 	int32_t  Temp[DSP.MaxBlock] = {};
 
-
-	Dante::Timing timing;
-	int result = timing.open(Buffers.getTimingObjectSubheader(), Buffers.isGlobalNamespace());
-	if (result)
+	daes67.clear();
+	while (g_running && DSP.Running())
 	{
-		std::cerr << "Error opening timing object: " << Dante::Timing::getErrorMessage(result) << std::endl;
-	}
+		uint64_t nPeriod;
+		int nPeriodsPerBlock = DSP.BlockSize() / daes67.get()->clock.period;
+		for (int n=0; n<nPeriodsPerBlock; n++) nPeriod = daes67.wait(10);
 
-	while (g_running && header->metadata.magic_marker && DSP.Running())
-	{
-		if (nReset != header->metadata.reset_count)
-		{
-			nReset  = header->metadata.reset_count;
-			nPeriod = header->time.period_count;
-			continue;
-		}
+		if (nPeriod==0) { printf("RESETTING IN DEP LOOP\n"); daes67.clear(); continue; };
 
-		int nPeriodsPerBlock = DSP.BlockSize() / header->time.samples_per_period;
 		int chunk;
-		while (*(volatile uint32_t *)&header->time.period_count < nPeriod + nPeriodsPerBlock ) { nWait++; timing.wait(); };		// Sync to Dante cadence
-		nPeriod += nPeriodsPerBlock;
-
-
-		uint64_t     nPeriodCount       = header->time.period_count;
 		int 		 nBlock             = DSP.BlockSize();
-		int          nSamplesPerPeriod  = header->time.samples_per_period;
-		int          nSamplesPerChannel = header->audio.samples_per_channel;
+		int          nSamplesPerPeriod  = daes67.get()->clock.period;
+		int          nSamplesPerChannel = daes67.get()->audio.samples;
 		int          nLatency           = DSP.Latency();
 		unsigned int nRxHead = (unsigned int) (((nPeriod-nPeriodsPerBlock)*nSamplesPerPeriod           ) % nSamplesPerChannel);		// Use data one Block before the
 		unsigned int nTxHead = (unsigned int) (((nPeriod-nPeriodsPerBlock)*nSamplesPerPeriod + nLatency ) % nSamplesPerChannel);		// actual Dante heads
 
-		if (nPeriodCount > nPeriod)	DSP.Chrono_N(0)->count((nPeriodCount - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
-		if (nPeriodCount > nPeriod + 10*nPeriodsPerBlock) nPeriod = header->time.period_count; 				    // If we are way off, reset the pointer
+		if (daes67.get()->clock.periods - nPeriod > 0)
+			DSP.Chrono_N(0)->count((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
 
 		chunk = nSamplesPerChannel - nRxHead;
-		if (chunk>=nBlock)  for (int n = 0; n < nRx; n++) DSP.Input (n, (int32_t *)Buffers.getDanteRxChannel(n)+nRxHead,1);
+		if (chunk>=nBlock)  for (int n = 0; n < nRx; n++) DSP.Input (n, (int32_t *)daes67.RX(n)+nRxHead,1);
 		else
 		{
 			for (int n = 0; n < nRx; n++)
 			{
-				memcpy(Temp,      (int32_t *)Buffers.getDanteRxChannel(n)+nRxHead,    chunk    *sizeof(int32_t));
-				memcpy(Temp+chunk,(int32_t *)Buffers.getDanteRxChannel(n),        (nBlock-chunk)*sizeof(int32_t));
+				memcpy(Temp,       daes67.RX(n)+nRxHead,    chunk    *sizeof(int32_t));
+				memcpy(Temp+chunk, daes67.RX(n),       (nBlock-chunk)*sizeof(int32_t));
 				DSP.Input(n, Temp, 1);
 			} 
 		}
 		
+		//Debug("PROCESS Loop with data %d",*daes67.RX(0));
 		DSP.Process();
 		DSP.Finish();
 
 		chunk = nSamplesPerChannel - nTxHead;
-		if (chunk>=nBlock)  for (int n = 0; n < nTx; n++) DSP.Output(n, (int32_t *)Buffers.getDanteTxChannel(n)+nTxHead,1);
+
+		if (chunk>=nBlock)  for (int n = 0; n < nTx; n++) DSP.Output(n, (int32_t *)daes67.TX(n)+nTxHead,1);
 		else
 		{
 			for (int n = 0; n < nTx; n++)
 			{
 				DSP.Output(n, Temp, 1);
-				memcpy((int32_t *)Buffers.getDanteTxChannel(n)+nTxHead,Temp,         chunk     *sizeof(int32_t));
-				memcpy((int32_t *)Buffers.getDanteTxChannel(n),        Temp+chunk,(nBlock-chunk)*sizeof(int32_t));
+				memcpy(daes67.TX(n)+nTxHead,Temp,         chunk     *sizeof(int32_t));
+				memcpy(daes67.TX(n),        Temp+chunk,(nBlock-chunk)*sizeof(int32_t));
 			} 
 		}
 
@@ -191,12 +181,10 @@ void dep(void)
 		if (chunk<nBlock) memcpy((int32_t *)Buffers.getDanteTxChannel(0),        Temp+chunk,(nBlock-chunk)*sizeof(int32_t));
 */		
 
-		int time = ((int)header->time.period_count - nPeriod)*nSamplesPerPeriod - nLatency + nBlock;
+		int time = (daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod - nLatency + nBlock;
 		DSP.Chrono_N(1)->count(time);  
 
 	}
-	timing.close();
-	Buffers.disconnect();
 }
 
 
@@ -207,6 +195,8 @@ int main(int argc, char * argv[])
 	bool bClear=false, bReset=false, bDSP=false, bSilent=false, bLogY=false;
 	int  nDSP[]={ 16, 16, 64, 32, 144, 1, 1}, nTestLength=0;
 	const char *sFile="";
+
+	setlogmask(LOG_UPTO(LOG_DEBUG));
 
 	while (argc>1)
 	{
@@ -309,7 +299,7 @@ int main(int argc, char * argv[])
 
 	}
 	usleep(50000);
-	cleanupDantePriority();
+
 	if (!DSP.Owner() && DSP.Running()) printf("DSP STATE %12ld Rx=%d Tx=%d N=%d M=%d L=%d F=%d T=%d   Filters=%d UsedTaps=%d\n",DSP.Count(), DSP.Inputs(),DSP.Outputs(),DSP.BlockSize(),DSP.Blocks(),DSP.Latency(),DSP.Filters(),DSP.Threads(),DSP.Filters(),DSP.Taps());
 	if (!bKill)	std::cerr << "Unexpected Fail : Possibly Insufficient CPU for sustaining DSP" << std::endl;
 	return 0;
