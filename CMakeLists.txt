@@ -7,10 +7,12 @@ cmake_minimum_required (VERSION 3.8)
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -D_GLIBCXX_USE_CXX11_ABI=0")
 
 project ("DepConvolver")
-include_directories("." "../daes67" "ats_core/chrono/include")
+add_subdirectory(daes67)
+
+include_directories("." "ats_core/chrono/include")
 # Add source to this project's executable.
-add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp" "../daes67/buffer.cpp" "ats_core/chrono/src/chrono.cpp" "ats_core/chrono/src/hist.cpp")
-target_link_libraries(DepConvolver "rt" "pthread")
+add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp" "ats_core/chrono/src/chrono.cpp" "ats_core/chrono/src/hist.cpp")
+target_link_libraries(DepConvolver daes67 "rt" "pthread")
 
 #get_cmake_property(_variableNames VARIABLES)
 #foreach (_variableName ${_variableNames})

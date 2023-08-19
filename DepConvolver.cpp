@@ -14,6 +14,7 @@
 
 #include <ThreadedDSP.hpp>
 #include <buffer.hpp>
+#include <rtp.hpp>
 #include <log.hpp>
 
 
@@ -107,14 +108,11 @@ void meters(char *s, int nWidth, int nHeight, int nIn, int nOut, float *pfIn, fl
 static int nWait;
 
 
+DAES67::Buffer daes67;
+DAES67::RTP    rtp;
 
 void dep(void)
 {
-
-	DAES67::Buffer daes67;
-
-	daes67.connect("DanteEP");
-
 	struct sched_param param;
 	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
     int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
@@ -197,6 +195,10 @@ int main(int argc, char * argv[])
 	const char *sFile="";
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
+
+	daes67.create("DAES67",8,8,2048);
+	rtp.set_buffer("DAES67");
+	rtp.start();
 
 	while (argc>1)
 	{
