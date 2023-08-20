@@ -16,6 +16,7 @@
 #include <buffer.hpp>
 #include <rtp.hpp>
 #include <log.hpp>
+#include <histogram.hpp>
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +112,7 @@ static int nWait;
 
 DAES67::RTP    rtp;
 DAES67::Buffer daes67;
+DAES67::Histogram Calls("CallTimes",0,0.010);
 
 void dep(void)
 {
@@ -128,6 +130,8 @@ void dep(void)
 		uint64_t nPeriod;
 		int nPeriodsPerBlock = DSP.BlockSize() / daes67.get()->clock.period;
 		for (int n=0; n<nPeriodsPerBlock; n++) nPeriod = daes67.wait(10);
+
+		Calls.time();
 
 		if (nPeriod==0) { printf("RESETTING IN DEP LOOP\n"); daes67.clear(); continue; };
 
@@ -287,6 +291,11 @@ int main(int argc, char * argv[])
 		printf("%s [%s] Block %12ld   Taps %8d\n",DSP.Owner()?"Running":"Attached",DSP.SHM_Name(),DSP.Count(),DSP.Taps());
 		printf("%s",s);
 
+
+		Calls.text(w.ws_row/3, s, true);
+		printf("\n\n%s\n\n",s);
+
+/*
 		DSP.Chrono_CallTime()->histogram(&hTemp);
 		HistTextOption options = X_LABEL | Y_LABEL |  TOTAL | MEAN | MODE | MAX;
 		if (bLogY) options = options | LOGY;
@@ -301,6 +310,8 @@ int main(int argc, char * argv[])
 		DSP.Chrono_N(1)->histogram(&hTemp);
 		hTemp.text(w.ws_row/5-2, s, options);
 		printf("%s",s);
+
+*/
 
 	}
 	usleep(50000);
