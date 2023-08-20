@@ -4,10 +4,11 @@
 #include <atomic>
 #include <shared_mutex>
 #include <condition_variable>
-#include <chrono>
 #include <cstring>
 #include <math.h>
-#include <chrono.h>
+#include <histogram.hpp>
+
+using namespace DA;
 
 #ifdef _WIN32 
 #include "../extern/ipp/include/ipp.h"
@@ -97,8 +98,6 @@ inline IppStatus ippsConvert_32f32s_Sfs(const Ipp32f* pSrc, Ipp32s* pDst, int le
 #pragma warning( push )
 #pragma warning( disable : 26451 )
 
-using namespace Audinate::chrono;
-
 class ThreadedDSP
 {
 public:
@@ -138,7 +137,8 @@ private:
         Filter      Filt[MaxFilters];       // Filter details
         float       Load;                   // An estimate of the load - DSP time / Call time
 
-        Chrono      Chronos[MaxChronos];    // Shared chronos for CallTime, Load, ThreadExecTime and some spare
+
+        histogram_t Chronos[MaxChronos];    // Shared chronos for CallTime, Load, ThreadExecTime and some spare
         int32_t     Threads;                //
         int32_t     Latency;                // Not used in this directly, but IO engine may set it
         float       Data[1];                // Member used to calculate the size of the Map structure prior to the audio data
@@ -242,11 +242,12 @@ public:
     int     GetFilterLength (int in, int out);
 
 
-    Chrono *Chrono_CallTime(void)     { if (!p)                  return nullptr; return &p->Chronos[0]; };
-    Chrono *Chrono_ExecTime(int n)    { if (!p || n>=MaxThreads) return nullptr; return &p->Chronos[2+n]; };
-    Chrono *Chrono_Load(void)         { if (!p)                  return nullptr; return &p->Chronos[1]; };
-    Chrono *Chrono_N(int n)           { if (!p || n>=MaxChronos-MaxThreads-2) return nullptr; return &p->Chronos[MaxThreads+2+n]; };
-    void    Chrono_Reset(void)        { if (!p) return; for (int n=0; n<MaxChronos; n++) p->Chronos[n].reset(); }; 
+    histogram_t *Chrono_CallTime(void)     { if (!p)                  return nullptr; return &p->Chronos[0]; };
+    histogram_t *Chrono_ExecTime(int n)    { if (!p || n>=MaxThreads) return nullptr; return &p->Chronos[2+n]; };
+    histogram_t *Chrono_Load(void)         { if (!p)                  return nullptr; return &p->Chronos[1]; };
+    histogram_t *Chrono_N(int n)           { if (!p || n>=MaxChronos-MaxThreads-2) return nullptr; return &p->Chronos[MaxThreads+2+n]; };
+    void Chrono_Reset(void)        
+    { if (!p) return; for (int n=0; n<MaxChronos; n++) Histogram(&p->Chronos[n]).reset(); }; 
 
 private:
     const int nRate = 48000;            // Maybe add an API to change later

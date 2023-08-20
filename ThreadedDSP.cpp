@@ -101,15 +101,15 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
 
     float range = 2*block/48000.0F;
 
-    Chrono_CallTime()->config(0.000F, range, 101, DITHER, "DSP CALL TIME");
-    Chrono_Load()->config(0, 200, 101, DITHER | COUNTER, "DSP EXECUTION LOAD %");
+    Histogram(Chrono_CallTime()).configure("DSP CALL TIME",0.000F, range);
+    Histogram(Chrono_Load()).configure("DSP EXECUTION LOAD %",0, 200);
 
     done = 0;
     for (int t=0; t<nThreads; t++) 
     { 
         char name[64];
         snprintf(name, 63, "DSP EXECUTION TIME  THREAD %2d", t);
-        Chrono_ExecTime(t)->config(0.000F, range, 101, DITHER, name);
+        Histogram(Chrono_ExecTime(t)).configure(name, 0.000F, range);
         pThreads[t] = new std::thread(&ThreadedDSP::ThreadProc,this,t); 
     };
     std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Make sure all threads start and get to first lock
@@ -246,16 +246,16 @@ void ThreadedDSP::Finish(void)
     std::unique_lock<std::mutex> lk(mtx);           // Wait for all DSP threads to finish
     if (processing && p->bRunning) finished.wait(lk); lk.unlock(); // Only wait if not already finished
     int tmax = 0;
-    for (int n=0; n<nThreads; n++) tmax = std::max(tmax, (int)Chrono_ExecTime(n)->diffNs());
+    for (int n=0; n<nThreads; n++) tmax = 0; // std::max(tmax, (int)Chrono_ExecTime(n)->diffNs());
     p->Load = (float)tmax / p->N * nRate / 1E9;
-    if (Chrono_CallTime()->eventCount()>1) Chrono_Load()->count((int)(p->Load*100+0.5));
+    Histogram(Chrono_Load()).add((int)(p->Load*100+0.5));
 }
 
 void ThreadedDSP::Process(void)
 {
     if (!p || !bOwner) return;
-    Chrono_CallTime()->event();    
-    for (int n=0; n<nThreads; n++) Chrono_ExecTime(n)->restart();  
+    Histogram(Chrono_CallTime()).time();    
+    for (int n=0; n<nThreads; n++) Histogram(Chrono_ExecTime(n)).start();  
     std::unique_lock<std::mutex> lk(mtx); loading=false; processing=true; start.notify_all(); lk.unlock();  // Start the DSP threads
 }
 
@@ -327,7 +327,7 @@ void ThreadedDSP::ThreadProc(int ID)
             ippsMaxAbs_32f(afOut(n,p->t,0),p->Block,&fMax);                 // Get the peak
             if (fMax>p->PeakOut[n]) p->PeakOut[n]=fMax; else p->PeakOut[n] = 0.99F*p->PeakOut[n];  // Bit of smoothing
 		}
-        Chrono_ExecTime(ID)->event();
+        Histogram(Chrono_ExecTime(ID)).time();
         lk.lock(); if (--done==0) { finished.notify_one(); processing=false; };// Check if this is the last, and return to start without unlocking
     }
 	ippsFree(pFFTBuf); 

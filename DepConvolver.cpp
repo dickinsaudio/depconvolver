@@ -18,6 +18,7 @@
 #include <log.hpp>
 #include <histogram.hpp>
 
+using namespace DA;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration - size and structure details
@@ -112,7 +113,7 @@ static int nWait;
 
 DAES67::RTP    rtp;
 DAES67::Buffer daes67;
-DAES67::Histogram Calls("CallTimes",0,0.010);
+DA::Histogram Calls("CallTimes",0,0.010);
 
 void dep(void)
 {
@@ -144,7 +145,7 @@ void dep(void)
 		unsigned int nTxHead = (unsigned int) (((nPeriod-nPeriodsPerBlock)*nSamplesPerPeriod + nLatency ) % nSamplesPerChannel);		// actual Dante heads
 
 		if (daes67.get()->clock.periods - nPeriod > 0)
-			DSP.Chrono_N(0)->count((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
+			Histogram(DSP.Chrono_N(0)).add((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
 
 		chunk = nSamplesPerChannel - nRxHead;
 		if (chunk>=nBlock)  for (int n = 0; n < nRx; n++) DSP.Input (n, (int32_t *)daes67.RX(n)+nRxHead,1);
@@ -185,7 +186,7 @@ void dep(void)
 */		
 
 		int time = (daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod - nLatency + nBlock;
-		DSP.Chrono_N(1)->count(time);  
+		Histogram(DSP.Chrono_N(1)).add(time);  
 
 	}
 	Debug("DEP Thread Finished");
@@ -240,8 +241,8 @@ int main(int argc, char * argv[])
 
 	if (DSP.Owner())
 	{
-		DSP.Chrono_N(0)->config(0,800,101,COUNTER, "COUNT OF LATE CALL EVENTS (samples)");
-		DSP.Chrono_N(1)->config(-400,400,101,COUNTER,"COUNT OF DSP OUTPUT TIMES (samples)");
+		Histogram(DSP.Chrono_N(0)).configure("COUNT OF LATE CALL EVENTS (samples)",0,800);
+		Histogram(DSP.Chrono_N(1)).configure("COUNT OF DSP OUTPUT TIMES (samples)",-400,400);
 	    std::thread *pthread = new std::thread(dep);
 	}
 
@@ -251,8 +252,6 @@ int main(int argc, char * argv[])
 
 	if (bClear || bReset) DSP.Chrono_Reset();
 	
-	Histogram hTemp;
-
 	std::ifstream file;  
 	if (sFile[0])
 	{
@@ -292,27 +291,18 @@ int main(int argc, char * argv[])
 		printf("%s",s);
 
 
-		Calls.text(w.ws_row/3, s, true);
-		printf("\n\n%s\n\n",s);
+//		Calls.text(w.ws_row/3, s, true);
+//		printf("\n\n%s\n\n",s);
 
-/*
-		DSP.Chrono_CallTime()->histogram(&hTemp);
-		HistTextOption options = X_LABEL | Y_LABEL |  TOTAL | MEAN | MODE | MAX;
-		if (bLogY) options = options | LOGY;
-		hTemp.text(w.ws_row/5-2, s, options);
-		printf("%s",s);
-		DSP.Chrono_Load()->histogram(&hTemp);
-		hTemp.text(w.ws_row/5-2, s, options);
-		printf("%s",s);
-		DSP.Chrono_N(0)->histogram(&hTemp);
-		hTemp.text(w.ws_row/5-2, s, options);
-		printf("%s",s);
-		DSP.Chrono_N(1)->histogram(&hTemp);
-		hTemp.text(w.ws_row/5-2, s, options);
-		printf("%s",s);
 
-*/
-
+		Histogram(DSP.Chrono_CallTime()).text(w.ws_row/5-2, s);
+		printf("%s",s);
+		Histogram(DSP.Chrono_Load()).text(w.ws_row/5-2, s);
+		printf("%s",s);
+		Histogram(DSP.Chrono_N(0)).text(w.ws_row/5-2, s);
+		printf("%s",s);
+		Histogram(DSP.Chrono_N(1)).text(w.ws_row/5-2, s);
+		printf("%s",s);
 	}
 	usleep(50000);
 	if (!DSP.Owner() && DSP.Running()) printf("DSP STATE %12ld Rx=%d Tx=%d N=%d M=%d L=%d F=%d T=%d   Filters=%d UsedTaps=%d\n",DSP.Count(), DSP.Inputs(),DSP.Outputs(),DSP.BlockSize(),DSP.Blocks(),DSP.Latency(),DSP.Filters(),DSP.Threads(),DSP.Filters(),DSP.Taps());

@@ -9,9 +9,9 @@ SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -D_GLIBCXX_
 project ("DepConvolver")
 add_subdirectory(daes67)
 
-include_directories("." "ats_core/chrono/include")
+include_directories(".")
 # Add source to this project's executable.
-add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp" "ats_core/chrono/src/chrono.cpp" "ats_core/chrono/src/hist.cpp")
+add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp")
 target_link_libraries(DepConvolver daes67 "rt" "pthread")
 
 #get_cmake_property(_variableNames VARIABLES)
