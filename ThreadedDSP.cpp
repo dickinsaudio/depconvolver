@@ -99,7 +99,7 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
 	ippsFFTInit_R_32f(&pFFT, FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, pFFTSpec, pFFTInit);
     p->bRunning = true;
 
-    float range = 2*block/48000.0F;
+    float range = 3*block/48000.0F;
 
     Histogram(Chrono_CallTime()).configure("DSP CALL TIME",0.000F, range);
     Histogram(Chrono_Load()).configure("DSP EXECUTION LOAD %",0, 200);
@@ -262,8 +262,8 @@ void ThreadedDSP::Process(void)
 void ThreadedDSP::ThreadProc(int ID)
 {
 #ifdef __linux__
-	struct sched_param param;
-	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
+	struct sched_param param{};
+	param.sched_priority = 60;
     int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
 #else
     DWORD taskIndex = 0;

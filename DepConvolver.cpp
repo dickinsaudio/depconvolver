@@ -111,15 +111,22 @@ static int nWait;
 
 
 
-DAES67::RTP    rtp;
-DAES67::Buffer daes67;
 DA::Histogram Calls("CallTimes",0,0.010);
 
 void dep(void)
 {
-	struct sched_param param;
-	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
+	struct sched_param param{};
+	param.sched_priority = 50;
     int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+
+	DAES67::RTP    rtp;
+	DAES67::Buffer daes67;
+	
+	if (!daes67.create("DAES67",8,8,2048)) { std::cerr << "Cannot create DAES67 buffers\n"; return; };
+	if (!rtp.set_buffer("DAES67"))         { std::cerr << "Cannot create DAES67 engine\n"; return; };
+	if (!rtp.start())					   { std::cerr << "Cannot run DAES67 engine\n"; return; };	
+
+
 
 	int 	 nTx 	 = daes67.get()->audio.tx;
 	int 	 nRx 	 = daes67.get()->audio.rx;
@@ -203,10 +210,6 @@ int main(int argc, char * argv[])
 	const char *sFile="";
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
-
-	if (!daes67.create("DAES67",8,8,2048)) { std::cerr << "Cannot create DAES67 buffers\n"; return 0; };
-	if (!rtp.set_buffer("DAES67"))         { std::cerr << "Cannot create DAES67 engine\n"; return 0; };
-	if (!rtp.start())					   { std::cerr << "Cannot run DAES67 engine\n"; return 0; };	
 
 	while (argc>1)
 	{
@@ -295,13 +298,13 @@ int main(int argc, char * argv[])
 //		printf("\n\n%s\n\n",s);
 
 
-		Histogram(DSP.Chrono_CallTime()).text(w.ws_row/5-2, s);
+		Histogram(DSP.Chrono_CallTime()).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_Load()).text(w.ws_row/5-2, s);
+		Histogram(DSP.Chrono_Load()).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_N(0)).text(w.ws_row/5-2, s);
+		Histogram(DSP.Chrono_N(0)).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_N(1)).text(w.ws_row/5-2, s);
+		Histogram(DSP.Chrono_N(1)).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
 	}
 	usleep(50000);
