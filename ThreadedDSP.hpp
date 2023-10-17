@@ -8,14 +8,14 @@
 #include <math.h>
 #include <histogram.hpp>
 
-using namespace DA;
+using namespace DAES67;
 
 #ifdef _WIN32 
-#include "../extern/ipp/include/ipp.h"
+#include "ipp.h"
 #else
 #ifndef __arm__
-//#include "../extern/ipp/include/ipp.h"
-//#else 
+#include "ipp.h"
+#else 
 #include <arm_neon.h>
 #include "../Ne10/inc/NE10.h"
 #define ippStsNoErr          0

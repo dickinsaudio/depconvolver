@@ -9,7 +9,7 @@ SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -D_GLIBCXX_
 project ("DepConvolver")
 add_subdirectory(daes67)
 
-include_directories(".")
+include_directories("." "~/intel/oneapi/ipp/latest/include")
 # Add source to this project's executable.
 add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp")
 target_link_libraries(DepConvolver daes67 "rt" "pthread")
@@ -20,9 +20,9 @@ target_link_libraries(DepConvolver daes67 "rt" "pthread")
 #endforeach()
 
 if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
-    target_link_libraries(DepConvolver "/home/g/git/rnd__glenn/extern/ipp/lib/x64/libipps.a")
-    target_link_libraries(DepConvolver "/home/g/git/rnd__glenn/extern/ipp/lib/x64/libippcore.a")
-    target_link_libraries(DepConvolver "/home/g/git/rnd__glenn/extern/ipp/lib/x64/libippvm.a")
+    target_link_libraries(DepConvolver "~/intel/oneapi/ipp/latest/lib/intel64/libipps.a")
+    target_link_libraries(DepConvolver "~/intel/oneapi/ipp/latest/lib/intel64/libippcore.a")
+    target_link_libraries(DepConvolver "~/intel/oneapi/ipp/latest/lib/intel64/libippvm.a")
 ELSE()
     target_link_libraries(DepConvolver "/home/ubuntu/git/Ne10/build/modules/libNE10.a")
 ENDIF()
