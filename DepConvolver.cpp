@@ -116,7 +116,7 @@ void dep(void)
 
 	DAES67::Buffer daes67;
 
-	daes67.connect("DanteEP");
+	if (!daes67.connect("DanteEP")) { fprintf(stderr,"Cannot open Dante\n"); exit(1); };
 
 	struct sched_param param;
 	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
