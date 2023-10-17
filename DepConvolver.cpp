@@ -111,22 +111,16 @@ static int nWait;
 
 
 
-Histogram Calls("CallTimes",0,0.010);
-
 void dep(void)
 {
-	struct sched_param param{};
-	param.sched_priority = 50;
-    int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
 
-	DAES67::RTP    rtp;
 	DAES67::Buffer daes67;
-	
-	if (!daes67.create("DAES67",8,8,2048)) { std::cerr << "Cannot create DAES67 buffers\n"; return; };
-	if (!rtp.set_buffer("DAES67"))         { std::cerr << "Cannot create DAES67 engine\n"; return; };
-	if (!rtp.start())					   { std::cerr << "Cannot run DAES67 engine\n"; return; };	
 
+	daes67.connect("DanteEP");
 
+	struct sched_param param;
+	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
+    int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
 
 	int 	 nTx 	 = daes67.get()->audio.tx;
 	int 	 nRx 	 = daes67.get()->audio.rx;
@@ -138,8 +132,6 @@ void dep(void)
 		uint64_t nPeriod;
 		int nPeriodsPerBlock = DSP.BlockSize() / daes67.get()->clock.period;
 		for (int n=0; n<nPeriodsPerBlock; n++) nPeriod = daes67.wait(10);
-
-		Calls.time();
 
 		if (nPeriod==0) { printf("RESETTING IN DEP LOOP\n"); daes67.clear(); continue; };
 
