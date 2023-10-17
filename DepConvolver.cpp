@@ -18,7 +18,7 @@
 #include <log.hpp>
 #include <histogram.hpp>
 
-using namespace DA;
+using namespace DAES67;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration - size and structure details
@@ -111,7 +111,7 @@ static int nWait;
 
 
 
-DA::Histogram Calls("CallTimes",0,0.010);
+Histogram Calls("CallTimes",0,0.010);
 
 void dep(void)
 {
