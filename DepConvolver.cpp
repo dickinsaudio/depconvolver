@@ -131,7 +131,7 @@ void dep(void)
 	{
 		uint64_t nPeriod;
 		int nPeriodsPerBlock = DSP.BlockSize() / daes67.get()->clock.period;
-		for (int n=0; n<nPeriodsPerBlock; n++) nPeriod = daes67.wait(10);
+		for (int n=0; n<nPeriodsPerBlock; n++) nPeriod = daes67.wait(128);
 
 		if (nPeriod==0) { printf("RESETTING IN DEP LOOP\n"); daes67.clear(); continue; };
 
@@ -306,29 +306,4 @@ int main(int argc, char * argv[])
 	return 0;
 }
 
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-#include <stdbool.h>
-
-    const char *       ATS_CORE_GIT_HASH_FULL = "";
-    const char *       ATS_CORE_GIT_HASH_SHORT = "";
-    const bool         ATS_CORE_GIT_STATE_CHANGES = false;
-    const char *       ATS_CORE_GIT_COMPONENT_TAG_HASH = "";
-    const char *       ATS_CORE_GIT_COMPONENT_TAG_HASH_SHORT = "";
-    const char *       ATS_CORE_GIT_COMPONENT_TAG = "";
-    const char *       ATS_CORE_GIT_COMPONENT_TAG_VERSION = "";
-    const bool         ATS_CORE_GIT_COMMITS_SINCE_COMPONENT_TAG = false;
-    const char *       ATS_CORE_GIT_COMPONENT_TAG_VERSION_TYPE = "";
-    const char *       ATS_CORE_GIT_COMPONENT_TAG_VERSION_FULL = "";
-    const char *	   ATS_CORE_GIT_VERSION_MAJOR = "";
-    const char *       ATS_CORE_GIT_VERSION_MINOR = "";
-    const char *       ATS_CORE_GIT_VERSION_PATCH = "";
-    const char *       ATS_CORE_GIT_VERSION_SUFFIX = "";
-
-#ifdef __cplusplus
-}
 #endif
