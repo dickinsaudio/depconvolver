@@ -101,7 +101,7 @@ inline IppStatus ippsConvert_32f32s_Sfs(const Ipp32f* pSrc, Ipp32s* pDst, int le
 class ThreadedDSP
 {
 public:
-    static const int MaxChannels = 256;
+    static const int MaxChannels = 512;
     static const int MaxBlock    = 1024;
     static const int MaxLength   = 262144;
     static const int MaxThreads  = 32;

@@ -13,17 +13,14 @@
 #include <math.h>
 
 #include <ThreadedDSP.hpp>
-#include <buffer.hpp>
-#include <rtp.hpp>
+#include <daes67.hpp>
 #include <log.hpp>
-#include <histogram.hpp>
 
 using namespace DAES67;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Configuration - size and structure details
 //
-
 
 #define	SHM_NAME	"DepConvolver"
 
@@ -48,63 +45,6 @@ static void signal_handler(int sig)
 	g_running = false;
 	bKill = true;
 	signal(SIGINT, signal_handler);
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// UI Display - Text Meters
-//
-#define paint(x,y,c)    { if ((x)<nWidth && (y)<nHeight) s[(nHeight-(y)-1)*(nWidth+1)+(x)]=c; }
-#define row(x,y,xx,c)   { for (int __n=(x); __n<(x)+(xx); __n++) paint(__n,y,c); }
-#define col(x,y,yy,c)   { for (int __n=(y); __n<(y)+(yy); __n++) paint(x,__n,c); }
-void meters(char *s, int nWidth, int nHeight, int nIn, int nOut, float *pfIn, float *pfOut)
-{
-	memset(s,' ',nHeight*(nWidth+1)); for (int n=0;n<nHeight;n++) { s[n*(nWidth+1)+nWidth]='\n'; };
-	s[nHeight*(nWidth+1)]=0;
-
-	int   nBar   = nHeight-3;
-	float fScale = 1.0F/5.0F; 
-
-	col(3,3,nBar,'|');
-	col(3+nIn+1,3,nBar,'|');
-	col(3+nIn+3,3,nBar,'|');
-	col(3+nIn+3+nOut+1,3,nBar,'|');
-	row(3,2,nIn+2,'-');
-	row(3+nIn+3,2,nOut+2,'-');
-
-	for (int n=0; n<9; n++) 
-	{ 
-		int nH = nHeight-(int)(n*10*fScale+0.5)-1; 
-		if (nH<3) break;
-		if (n>0) paint(0,nH,'-'); paint(1,nH,'0'+n); paint(2,nH,'0');
-		if (n>0) paint(8+nIn+nOut,nH,'-'); paint(9+nIn+nOut,nH,'0'+n); paint(10+nIn+nOut,nH,'0');
-	}
-
-	static char S[] = { ' ', '_', '.', 'x', 'X'};
-
-	for (int n=0; n<nIn; n++) 
-	{ 
-		paint(4+n,0,(n+1)%10+'0');
-		paint(4+n,1,(n+1)/10+'0');
-		float h = nBar+fScale*20.0F*log10f(pfIn[n]+1E-12F);
-		if (h>0)
-		{
-			col  (4+n,3,(int)h,'X');
-			paint(4+n,3+(int)h,S[(int)((h-(int)h)*5)]);
-		}
-	};
-	
-	for (int n=0; n<nOut; n++) 
-	{ 
-		paint(4+nIn+3+n,0,(n+1)%10+'0'); 
-		paint(4+nIn+3+n,1,(n+1)/10+'0');
-		float h = nBar+fScale*20.0F*log10f(pfOut[n]+1E-12F);
-		if (h>0)
-		{
-			col  (4+nIn+3+n,3,(int)h,'X');
-			paint(4+nIn+3+n,3+(int)h,S[(int)((h-(int)h)*5)]);
-		}
-	};
 }
 
 static int nWait;
@@ -306,4 +246,3 @@ int main(int argc, char * argv[])
 	return 0;
 }
 
-#endif

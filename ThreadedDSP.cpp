@@ -245,9 +245,9 @@ void ThreadedDSP::Finish(void)
     if (!p || !bOwner) return;
     std::unique_lock<std::mutex> lk(mtx);           // Wait for all DSP threads to finish
     if (processing && p->bRunning) finished.wait(lk); lk.unlock(); // Only wait if not already finished
-    int tmax = 0;
-    for (int n=0; n<nThreads; n++) tmax = 0; // std::max(tmax, (int)Chrono_ExecTime(n)->diffNs());
-    p->Load = (float)tmax / p->N * nRate / 1E9;
+    float tmax = 0;
+    for (int n=0; n<nThreads; n++) tmax = std::max(tmax, Histogram(Chrono_ExecTime(n)).latest());
+    p->Load = (float)tmax / p->N * nRate;
     Histogram(Chrono_Load()).add((int)(p->Load*100+0.5));
 }
 
