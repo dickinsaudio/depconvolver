@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#include <ThreadedDSP.hpp>
+#include "ThreadedDSP.hpp"
 #include <daes67.hpp>
 #include <log.hpp>
 
@@ -83,6 +83,7 @@ void dep(void)
 		unsigned int nRxHead = (unsigned int) (((nPeriod-nPeriodsPerBlock)*nSamplesPerPeriod           ) % nSamplesPerChannel);		// Use data one Block before the
 		unsigned int nTxHead = (unsigned int) (((nPeriod-nPeriodsPerBlock)*nSamplesPerPeriod + nLatency ) % nSamplesPerChannel);		// actual Dante heads
 
+		//printf("%ld %ld %ld\n",daes67.get()->clock.periods,nPeriod,daes67.get()->clock.periods-nPeriod);
 		if (daes67.get()->clock.periods - nPeriod > 0)
 			Histogram(DSP.Chrono_N(0)).add((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
 

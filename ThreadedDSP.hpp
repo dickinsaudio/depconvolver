@@ -13,9 +13,7 @@ using namespace DAES67;
 #ifdef _WIN32 
 #include "../extern/ipp/include/ipp.h"
 #else
-#ifndef __arm__
-#include "ipp.h"
-#else 
+#if defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
 #include "../Ne10/inc/NE10.h"
 #define ippStsNoErr          0
@@ -90,6 +88,8 @@ inline IppStatus ippsConvert_32f32s_Sfs(const Ipp32f* pSrc, Ipp32s* pDst, int le
 };
 //  COULD OPTIMIZE THIS { while(len) { vst1q_f32(pSrcDst,vaddq_f32(vld1q_f32(pSrcDst),vld1q_f32(pSrc))); pSrcDst+=4; pSrc+=4; len-=4; }; return ippStsNoErr; }
 
+#else 
+#include "ipp.h"
 #endif
 #endif
 
