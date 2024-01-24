@@ -85,7 +85,7 @@ void dep(void)
 
 		//printf("%ld %ld %ld\n",daes67.get()->clock.periods,nPeriod,daes67.get()->clock.periods-nPeriod);
 		if (daes67.get()->clock.periods - nPeriod > 0)
-			Histogram(DSP.Chrono_N(0)).add((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
+			DSP.Chrono_N(0).add((daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod); 		// Log the call time against sample clock
 
 		chunk = nSamplesPerChannel - nRxHead;
 		if (chunk>=nBlock)  for (int n = 0; n < nRx; n++) DSP.Input (n, (int32_t *)daes67.RX(n)+nRxHead,1);
@@ -126,7 +126,7 @@ void dep(void)
 */		
 
 		int time = (daes67.get()->clock.periods - nPeriod)*nSamplesPerPeriod - nLatency + nBlock;
-		Histogram(DSP.Chrono_N(1)).add(time);  
+		DSP.Chrono_N(1).add(time);  
 
 	}
 	Debug("DEP Thread Finished");
@@ -177,8 +177,8 @@ int main(int argc, char * argv[])
 
 	if (DSP.Owner())
 	{
-		Histogram(DSP.Chrono_N(0)).configure("COUNT OF LATE CALL EVENTS (samples)",0,800);
-		Histogram(DSP.Chrono_N(1)).configure("COUNT OF DSP OUTPUT TIMES (samples)",-400,400);
+		DSP.Chrono_N(0).configure("COUNT OF LATE CALL EVENTS (samples)",0,800);
+		DSP.Chrono_N(1).configure("COUNT OF DSP OUTPUT TIMES (samples)",-400,400);
 	    std::thread *pthread = new std::thread(dep);
 	}
 
@@ -231,13 +231,13 @@ int main(int argc, char * argv[])
 //		printf("\n\n%s\n\n",s);
 
 
-		Histogram(DSP.Chrono_CallTime()).text(w.ws_row/5-2, s, bLogY);
+		DSP.Chrono_CallTime().text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_Load()).text(w.ws_row/5-2, s, bLogY);
+		DSP.Chrono_Load().text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_N(0)).text(w.ws_row/5-2, s, bLogY);
+		DSP.Chrono_N(0).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
-		Histogram(DSP.Chrono_N(1)).text(w.ws_row/5-2, s, bLogY);
+		DSP.Chrono_N(1).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
 	}
 	usleep(50000);
