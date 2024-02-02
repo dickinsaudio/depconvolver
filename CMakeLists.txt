@@ -6,10 +6,12 @@ set(CMAKE_CXX_STANDARD 11)
 
 project ("DepConvolver")
 add_subdirectory(daes67)
+add_subdirectory(rtmidi)
 
 # Add source to this project's executable.
 add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp")
-target_link_libraries(DepConvolver daes67 "rt" "pthread")
+target_link_libraries(DepConvolver daes67 rtmidi "rt" "pthread")
+
 
 if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
     include_directories("/opt/intel/oneapi/ipp/latest/include/ipp")
