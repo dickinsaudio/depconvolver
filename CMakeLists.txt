@@ -16,8 +16,8 @@ add_subdirectory(daes67)
 add_executable (DepConvolver "DepConvolver.cpp" "ThreadedDSP.cpp")
 target_link_libraries(DepConvolver daes67 "rt" "pthread")
 
-#add_subdirectory(rtmidi)
-#target_link_libraries(DepConvolver daes67 rtmidi "rt" "pthread")
+add_subdirectory(rtmidi)
+target_link_libraries(DepConvolver daes67 rtmidi "rt" "pthread")
 
 
 if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
