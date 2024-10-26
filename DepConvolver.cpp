@@ -139,6 +139,7 @@ int main(int argc, char * argv[])
 	// PARSE COMMAND LINE OPTIONS
 	bool bClear=false, bReset=false, bDSP=false, bSilent=false, bLogY=false;
 	int  nDSP[]={ 16, 16, 64, 32, 144, 1, 1}, nTestLength=0;
+	int  nFilterSet=-1;
 	const char *sFile="";
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
@@ -154,9 +155,10 @@ int main(int argc, char * argv[])
 			case 's' : bSilent=true; break;			
 			case 'l' : bLogY=true;   break;			
 			case 'd' : bDSP=true;    for (int n=0;n<7;n++) { argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",nDSP+n); }; break; 
-			case 'x' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nVal); nTestLength=nVal; break;  	
+			case 'x' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nTestLength); break; 
+			case 'f' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nFilterSet); break;
 			case 'k' : bKill=true; break;
-			default: printf("Argument Error : Usage  \nDepConvolver [ -s(ilent) -c(lear) -(r)eset -l(ogY) -d(sp) rx tx block blocks latency filters threads -x testlength -(k)ill ] filter_file\n"); exit(0);
+			default: printf("Argument Error : Usage  \nDepConvolver [ -fnnn ] [ -s(ilent) -c(lear) -(r)eset -l(ogY) -d(sp) rx tx block blocks latency filters threads -x testlength -(k)ill ] filter_file\n"); exit(0);
 		}
 		else { sFile=argv[0]; break; };
 	}
@@ -180,6 +182,8 @@ int main(int argc, char * argv[])
 		DSP.Chrono_N(1).configure("COUNT OF DSP OUTPUT TIMES (samples)",-400,400);
 	    std::thread *depthread = new std::thread(dep);
 	}
+
+	if (nFilterSet>=0 && nFilterSet<DSP.MaxSets) DSP.SetFilterSet(nFilterSet);
 
 	Filt[0]=1.0F;
 	if (bReset) for (int n=0; n<DSP.Inputs(); n++) for (int m=0; m<DSP.Outputs(); m++) DSP.LoadFilter(n,m); 
@@ -222,7 +226,7 @@ int main(int argc, char * argv[])
 
 		meters(s, w.ws_col, w.ws_row-2 - 4*(w.ws_row/5), DSP.Inputs(), DSP.Outputs(), fIn, fOut);
 		int ret = system("clear");
-		printf("%s [%s] Block %12ld   Taps %8d\n",DSP.Owner()?"Running":"Attached",DSP.SHM_Name(),DSP.Count(),DSP.Taps());
+		printf("%s [%s] Block %12ld   FilterSet %3d Taps %8d\n",DSP.Owner()?"Running":"Attached",DSP.SHM_Name(),DSP.Count(),DSP.GetFilterSet(), DSP.Taps());
 		printf("%s",s);
 
 

@@ -90,6 +90,7 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     afTemp = (float *)malloc(2*p->N*sizeof(float));
     anTemp = (int32_t *)malloc(p->N*sizeof(int32_t));
 
+    Filt_Set[0] = new Filter[p->F]();
 
 	int sizeSpec, sizeInit, sizeBuf;
     ippsFFTGetSize_R_32f(FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, &sizeSpec, &sizeInit, &sizeBuf);
@@ -171,6 +172,17 @@ void ThreadedDSP::Destroy(void)
         if (p) p->bRunning = false;
         start.notify_all(); std::this_thread::sleep_for(std::chrono::milliseconds(10));
         start.notify_all(); std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        for (int s=0; s<MaxSets; s++) 
+        {
+            if (s==p->Filt_Active) continue;
+            if (Filt_Set[s]) 
+            {
+                for (int f=0; f<p->F; f++)  if (Filt_Set[s][f].H) { free(Filt_Set[s][f].H);  Filt_Set[s][f].H = 0; };
+                delete [] Filt_Set[s];
+            }
+        }
+        for (int f=0; f<p->F; f++)  if (p->Filt[f].H) { free(p->Filt[f].H);  p->Filt[f].H = 0; };
     }
 #ifdef __linux__
     if (p && nSize>0)                  munmap(p, nSize);
@@ -254,7 +266,17 @@ void ThreadedDSP::Finish(void)
 void ThreadedDSP::Process(void)
 {
     if (!p || !bOwner) return;
-    Chrono_CallTime().time();    
+    Chrono_CallTime().time();
+
+    if (p->Filt_Next != p->Filt_Active) 
+    {
+        if (Filt_Set[p->Filt_Active]==0) Filt_Set[p->Filt_Active] = new Filter[p->F]();
+        if (Filt_Set[p->Filt_Next]==0)   Filt_Set[p->Filt_Next]   = new Filter[p->F]();
+        for (int f=0; f<p->F; f++) { p->Filt[f].Update = false; Filt_Set[p->Filt_Next][f].Update = false; };    // Avoid stale or lagging updates
+        memcpy(Filt_Set[p->Filt_Active], p->Filt, p->F*sizeof(Filter));
+        memcpy(p->Filt, Filt_Set[p->Filt_Next], p->F*sizeof(Filter));
+        p->Filt_Active = p->Filt_Next;
+    }
     for (int n=0; n<nThreads; n++) Chrono_ExecTime(n).start();  
     std::unique_lock<std::mutex> lk(mtx); loading=false; processing=true; start.notify_all(); lk.unlock();  // Start the DSP threads
 }
@@ -340,6 +362,14 @@ void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, I
 {
     if (!p->Filt[f].Update) return;
     int length   = p->Filt[f].Length;
+
+    int M = (length-1)/p->N + 1;
+    if (M != p->Filt[f].BLen) 
+    {
+        if (p->Filt[f].H) free(p->Filt[f].H);
+        p->Filt[f].H = (float *)calloc(p->N*M,2*sizeof(float));
+    }
+
     float* pFilt = afT(f,0);
     int        m = 0;
 	while (length > 0 && m < p->M)
