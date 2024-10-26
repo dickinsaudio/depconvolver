@@ -34,7 +34,6 @@ ThreadedDSP::ThreadedDSP()
     processing = false;
     pfX = 0;
     pfY = 0;
-    pfy = 0;
 }
 
 bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, int xfade, const char* sShared, int threads, int latency)
@@ -93,7 +92,6 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
 
     pfX = (float *)malloc(2*p->I*p->M*p->N*sizeof(float));
     pfY = (float *)malloc(2*p->O*p->N*sizeof(float));
-    pfy = (float *)malloc(2*p->O*p->N*sizeof(float));
     
     afTemp = (float *)malloc(2*p->N*sizeof(float));
     anTemp = (int32_t *)malloc(p->N*sizeof(int32_t));
@@ -211,7 +209,6 @@ void ThreadedDSP::Destroy(void)
 
     if (pfX)      free(pfX);            pfX      = nullptr;
     if (pfY)      free(pfY);            pfY      = nullptr;
-    if (pfy)      free(pfy);            pfy      = nullptr;
 
     bOwner = false;
 

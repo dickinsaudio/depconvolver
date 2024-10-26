@@ -164,7 +164,6 @@ private:
 private:   
     float* pfX;            // The buffer of F domain data        I*M*N*2
     float* pfY;            // The buffers for MAC for filter out   O*N*2
-    float* pfy;            // Working buffer for output            O*N*2
 
 public:
     float*  afIn    (int i, int n)        { return p->Data +      i         *2*p->N   + n; };
@@ -176,7 +175,6 @@ public:
     float*  afX     (int i, int m, int n) { return pfX + i*2*p->MN + m*p->N*2 + n; };
     float*  afH     (int f, int m, int n) { static float zero[2*MaxBlock];  if (p->Filt[f].H==nullptr) return zero; else return p->Filt[f].H + m*p->N*2 + n; };
     float*  afY     (int o, int n)        { return pfY + o*p->N*2 + n; };
-    float*  afy     (int o, int n)        { return pfy + o*p->N*2 + n; };
     
 
 public:
