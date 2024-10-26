@@ -148,16 +148,11 @@ private:
 
 /*      float       afIn[I][M][N];          // The Input time domain data           I*M*N       Data
         float       afOut[O][M][N];         // The Output time domain data          O*M*N       Data + ( I     )*M*N
-        float       afPlayIn[I][M][N];      // Audio to play into the inputs        I*M*N       Data + ( I +  O)*M*N
-        float       afPlayOut[O][M][N];     // Audio to play into the outputs       O*M*N       Data + (2I +  O)*M*N
-        float       afX[I][M][2N];          // The buffer of F domain data          I*M*N*2     Data + (2I + 2O)*M*N
-        float       afT[F][M][N];           // The time domain filter coefficients  F*M*N       Data + (4I + 2O)*M*N
-        float       afY[O][2N];             // The buffers for MAC for filter out   O*N*2       Data + (4I + 2O + F)*M*N
-        float       afy[O][2N];             // Working buffer for output            O*N*2       Data + (4I + 2O + F)*M*N + 2*O*N
-        int32_t     anIn[I][M][N]           // Bit perfect input Dante only         I*M*N       Data + (4I + 2O + F)*M*N + 4*O*N
-        int32_t     anOut[O][M][N]          // Bit perfect output Dante override    O*M*N       Data + (5I + 2O + F)*M*N + 4*O*N
-        int32_t     abOut[O][M]             // Flag set to raw ouput frame/channel  O*M         Data + (5I + 3O + F)*M*N + 4*O*N
-        sizeof(Map) + ((5I + 3O + F)*M*N + 4*O*N + O*M)*sizeof(float)
+        float       afX[I][M][2N];          // The buffer of F domain data          I*M*N*2     Data + ( I +  O)*M*N
+        float       afT[F][M][N];           // The time domain filter coefficients  F*M*N       Data + (3I +  O)*M*N
+        float       afY[O][2N];             // The buffers for MAC for filter out   O*N*2       Data + (3I +  O + F)*M*N
+        float       afy[O][2N];             // Working buffer for output            O*N*2       Data + (3I +  O + F)*M*N + 2*O*N
+        sizeof(Map) + ((3I + O + F)*M*N + 4*O*N)*sizeof(float)
 */
     };
 
@@ -172,18 +167,13 @@ private:
 public:
     float*  afIn    (int i, int m, int n) { return            p->Data +                            i   *p->MN + m*p->N   + n; };
     float*  afOut   (int o, int m, int n) { return            p->Data + (  p->I                  + o  )*p->MN + m*p->N   + n; };
-    float*  afPlayIn(int i, int m, int n) { return            p->Data + (  p->I +   p->O         + i  )*p->MN + m*p->N   + n; };
-    float*  afPlayOut(int o, int m, int n){ return            p->Data + (2*p->I +   p->O         + o  )*p->MN + m*p->N   + n; };
-    float*  afX     (int i, int m, int n) { return            p->Data + (2*p->I + 2*p->O         + i*2)*p->MN + m*p->N*2 + n; };
+    float*  afX     (int i, int m, int n) { return            p->Data + (  p->I +   p->O         + i*2)*p->MN + m*p->N*2 + n; };
     float*  afH     (int f, int m, int n) { static float zero[2*MaxBlock];  if (p->Filt[f].H==nullptr) return zero; else return p->Filt[f].H + m*p->N*2 + n; };
-    float*  afT     (int f, int n)        { return            p->Data + (4*p->I + 2*p->O + f          )*p->MN            + n; };
-    float*  afY     (int o, int n)        { return            p->Data + (4*p->I + 2*p->O + p->F       )*p->MN +               + o*p->N*2 + n; };
-    float*  afy     (int o, int n)        { return            p->Data + (4*p->I + 2*p->O + p->F       )*p->MN + 2*p->O*p->N   + o*p->N*2 + n; };
-    int32_t* anIn   (int i, int m, int n) { return (int32_t *)p->Data + (4*p->I + 2*p->O + p->F+ i    )*p->MN + 4*p->O*p->N   + m*p->N   + n; };
-    int32_t* anOut  (int o, int m, int n) { return (int32_t *)p->Data + (5*p->I + 2*p->O + p->F+ o    )*p->MN + 4*p->O*p->N   + m*p->N   + n; };
-    int32_t* abOut  (int o, int m       ) { return (int32_t *)p->Data + (5*p->I + 3*p->O + p->F       )*p->MN + 4*p->O*p->N   + o*p->M   + m; };
+    float*  afT     (int f, int n)        { return            p->Data + (3*p->I +   p->O + f          )*p->MN            + n; };
+    float*  afY     (int o, int n)        { return            p->Data + (3*p->I +   p->O + p->F       )*p->MN +               + o*p->N*2 + n; };
+    float*  afy     (int o, int n)        { return            p->Data + (3*p->I +   p->O + p->F       )*p->MN + 2*p->O*p->N   + o*p->N*2 + n; };
     
-    size_t   Size   (int I, int O, int M, int N, int F) { return sizeof(Map) +((5*I + 3*O + 3*F)*M*N + 4*O*N + O*M)*sizeof(float); };
+    size_t   Size   (int I, int O, int M, int N, int F) { return sizeof(Map) +((3*I + O + F)*M*N + 4*O*N)*sizeof(float); };
 
 public:
     ThreadedDSP();          
@@ -214,13 +204,6 @@ public:
     // These are non blocking, so if using T==0, use Spin to ensure data consistency
     uint64_t Spin   (uint64_t T=0, int timeoutms=500, bool spin=false);           // Spin a hard or sleep cycle until just after last block
     uint64_t SpinT  () { return LastT; };                                    // The frame at exit of last Spin (same as return from last Spin)
-    void GetIn  (int i, int s, float   *data, uint64_t T=0, int stride=1);     // Get the last s input samples of channel i 
-    void GetOut (int o, int s, float   *data, uint64_t T=0, int stride=1);     // Get the last s output samples of channel o
-    void PlayIn (int i, int s, float   *data, uint64_t T=0, int stride=1);     // Put s samples on the input queue for channel i
-    void PlayOut(int o, int s, float   *data, uint64_t T=0, int stride=1);     // Push s samples on the output queue for channel o
-    void GetRaw (int i, int s, int32_t *data, uint64_t T=0, int stride=1);     // Get the last s raw input sample of channel i
-    void PlayRaw(int o, int s, int32_t *data, uint64_t T=0, int stride=1);     // Overwrite the next s output samples of channel o
-    
 
     int     Inputs()    { if (!p) return 0; return p->I; };
     int     Outputs()   { if (!p) return 0; return p->O; };
@@ -244,7 +227,22 @@ public:
     int     GetFilterLength (int in, int out);
 
     int     GetFilterSet    ()      { return p->Filt_Active; };
-    int     SetFilterSet    (int n) { if (n<0 || n>=MaxSets) return 0; int old = p->Filt_Active; p->Filt_Next = n; return old; };
+    int     SetFilterSet    (int n) 
+    { 
+        if (p==0 || n<0 || n>=MaxSets) return 0;
+        if (p->Filt_Active == n) return n;
+        bool bUpdating = false;
+        while (p->bRunning && !bUpdating) 
+        {
+            for (int f=0; f<p->F; f++) if (p->Filt[f].Update) bUpdating = true;
+            if (!bUpdating) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        int old = p->Filt_Active; p->Filt_Next = n; 
+        while (p->bRunning && p->Filt_Active != n) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return old; 
+    };
+
 
     Histogram& Chrono_CallTime(void)     { return p->Chronos[0]; };
     Histogram& Chrono_ExecTime(int n)    { return p->Chronos[2+n]; };
@@ -273,4 +271,5 @@ private:
     int              nThreads;
 
     Filter *Filt_Set[MaxSets] = {};
+    bool    Filt_Set_Clear[MaxSets] = {};
 };

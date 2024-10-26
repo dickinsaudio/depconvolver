@@ -187,7 +187,10 @@ int main(int argc, char * argv[])
 
 	Filt[0]=1.0F;
 	if (bReset) for (int n=0; n<DSP.Inputs(); n++) for (int m=0; m<DSP.Outputs(); m++) DSP.LoadFilter(n,m); 
-	if (nTestLength) for (int n=0; n<DSP.MaxFilters; n++) DSP.LoadFilter(((n*(std::max(nDSP[0],nDSP[1])-1))/nDSP[1])%nDSP[0],(n*(std::max(nDSP[0],nDSP[1])-1))%nDSP[1],std::min((int)(sizeof(Filt)/sizeof(float)),nTestLength),Filt);
+	if (nTestLength) for (int n=0; n<DSP.MaxFilters; n++) 
+	{
+		DSP.LoadFilter(n%DSP.Inputs(),n%(DSP.Outputs()-1),std::min((int)(sizeof(Filt)/sizeof(float)),nTestLength),Filt);
+	}
 
 	if (bClear || bReset) DSP.Chrono_Reset();
 	

@@ -212,13 +212,10 @@ void ThreadedDSP::Input(int i, int32_t* data, int stride)
     if (!loading) { loading=true; p->T++; p->t = (p->t+1)%p->M; assert(p->T % p->M == p->t); }; // Advance
     lk.unlock();
     float   *pfIn   = afIn(i,p->t,0);
-    float   *pfPlay = afPlayIn(i,p->t,0); 
-    int32_t *pnRaw  = anIn(i,p->t,0);
     for (int n=0; n<p->Block; n++)
     {
-        *pnRaw = *data;
         *pfIn  = (float)*data / 2147483648.0F;
-        pfIn++; pnRaw++; data+=stride;
+        pfIn++; data+=stride;
     }
 }
 
@@ -230,21 +227,12 @@ void ThreadedDSP::Output(int o, int32_t *data, int stride)
         return;
     }
 
-    if (!*abOut(o, p->t))                                          // Check for a Raw override - channel specific
+    int32_t *pN  = anTemp;
+    ippsConvert_32f32s_Sfs(afOut(o,p->t,0), pN, p->Block, ippRndZero, -31);
+    for (int n=0; n<p->Block; n++) 
     {
-        int32_t *pN  = anTemp;
-        ippsConvert_32f32s_Sfs(afOut(o,p->t,0), pN, p->Block, ippRndZero, -31);
-        for (int n=0; n<p->Block; n++) 
-        {
-            *data = *pN++;
-            data += stride;
-        }
-    }
-    else
-    {
-        memcpy(data, anOut(o,p->t,0), p->N*sizeof(int32_t));      // buffer
-        memset(anOut(o,p->t,0), 0, p->N*sizeof(int32_t));
-        *abOut(o, p->t) = 0;
+        *data = *pN++;
+        data += stride;
     }
 }
 
@@ -312,9 +300,7 @@ void ThreadedDSP::ThreadProc(int ID)
         start.wait(lk); lk.unlock();                                    // Wait on CV signal to start processing
         for (int n=ID; n<p->I; n+=nThreads) 			                // Do this over all of the inputs
 		{				
-            ippsAdd_32f_I(afPlayIn(n,p->t,0), afIn(n,p->t,0),p->Block); // Add the PlayIn buffer
             ippsMaxAbs_32f(afIn(n,p->t,0),p->Block,&fMax);              // Get the peak
-            memset(afPlayIn(n,p->t,0),0,p->Block*sizeof(float));        // Clear the PlayIn buffer
             ippsMove_32f(afIn(n,(p->t-1+p->M)%p->M,0),   afTemp,         p->Block);	// 
             ippsMove_32f(afIn(n, p->t             ,0),   afTemp+p->Block,p->Block);	// Move two blocks of audio into FFT buffer
             ippsFFTFwd_RToPerm_32f(afTemp, afX(n,p->t,0), pFFT, pFFTBuf);  // And do the FFT
@@ -343,9 +329,7 @@ void ThreadedDSP::ThreadProc(int ID)
             ippsFFTInv_PermToR_32f(afY(n,0), afTemp, pFFT,pFFTBuf);		    // Do the inverse FFT and stick it in the
 			ippsMove_32f(afTemp+p->N, afy(n,0), p->N);                      // correct output
             ippsMove_32f  (afy(n,0),           afOut(n,p->t,0),p->Block);   // Get the latest filter output
-            ippsAdd_32f_I (afPlayOut(n,p->t,0),afOut(n,p->t,0),p->Block);   // Add in the Play buffer output
 //          ippsMove_32f(afIn(n,p->t,0),afOut(n,p->t,0),p->Block);          // INPUT AUDIO LOOPBACK
-            ippsSet_32f(0, afPlayOut(n,p->t,0),                p->Block);   // Clear the Play buffer
             ippsMaxAbs_32f(afOut(n,p->t,0),p->Block,&fMax);                 // Get the peak
             if (fMax>p->PeakOut[n]) p->PeakOut[n]=fMax; else p->PeakOut[n] = 0.99F*p->PeakOut[n];  // Bit of smoothing
 		}
@@ -364,10 +348,13 @@ void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, I
     int length   = p->Filt[f].Length;
 
     int M = (length-1)/p->N + 1;
+    if (length == 0) M = 0;
+
     if (M != p->Filt[f].BLen) 
     {
         if (p->Filt[f].H) free(p->Filt[f].H);
-        p->Filt[f].H = (float *)calloc(p->N*M,2*sizeof(float));
+        p->Filt[f].H = 0;
+        if (M>0) p->Filt[f].H = (float *)calloc(p->N*M,2*sizeof(float));
     }
 
     float* pFilt = afT(f,0);
@@ -454,74 +441,3 @@ uint64_t ThreadedDSP::Spin(uint64_t T, int timeoutms, bool spin)
     LastT = T;
     return  LastT;
 }
-
-void ThreadedDSP::GetIn  (int c, int s, float* data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->I || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int pos = ((T%p->M)*p->Block - s + p->MBlock)%(p->MBlock);  // Back in time - note p->t = p->T mod p->M
-    int chunk = p->MBlock - pos;                    // Amount to read before buffer end
-    if (chunk>s) chunk = s;                         // Only need at most s
-    memcpy(data, afIn(c,0,0)+pos,chunk*sizeof(float)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(data, afIn(c,0,0),    s    *sizeof(float));
-}
-
-void ThreadedDSP::GetOut (int c, int s, float *data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->O || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int pos = ((T%p->M)*p->Block - s + p->MBlock)%(p->MBlock);  // Back in time - note p->t = p->T mod p->M
-    int chunk = p->MBlock - pos;                    // Amount to read before buffer end
-    if (chunk>s) chunk = s;                         // Only need at most s
-    memcpy(data, afOut(c,0,0)+pos,chunk*sizeof(float)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(data, afOut(c,0,0),    s    *sizeof(float));
-}
-
-void ThreadedDSP::PlayIn (int c, int s, float* data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->I || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int chunk = p->Block*(p->M-(T%p->M));           // Current spot is our T modulus M
-    if (chunk>s) chunk = s;                         // Only need to write up to s
-    memcpy(afPlayIn(c,T%p->M,0), data, chunk*sizeof(float)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(afPlayIn(c,0    ,0), data, s    *sizeof(float));
-}
-
-void ThreadedDSP::PlayOut(int c, int s, float* data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->O || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int chunk = p->Block*(p->M-(T%p->M));           // Current spot is our T modulus M
-    if (chunk>s) chunk = s;                         // Only need to write up to s
-    memcpy(afPlayOut(c,T%p->M,0), data, chunk*sizeof(float)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(afPlayOut(c,0    ,0), data, s    *sizeof(float));
-}
-
-void ThreadedDSP::GetRaw  (int c, int s, int32_t* data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->I || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int pos = ((T%p->M)*p->Block - s + p->MBlock)%(p->MBlock);  // Back in time - note p->t = p->T mod p->M
-    int chunk = p->MBlock - pos;                    // Amount to read before buffer end
-    if (chunk>s) chunk = s;                         // Only need at most s
-    memcpy(data, anIn(c,0,0)+pos,chunk*sizeof(int32_t)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(data, anIn(c,0,0),    s    *sizeof(int32_t));
-}
-
-void ThreadedDSP::PlayRaw(int c, int s, int32_t* data, uint64_t T, int stride)
-{
-    if (!p || !p->bRunning || c<0 || c>p->O || s<0 || s>p->MBlock || !data || T<0) return;
-    if (T==0) T = p->t;
-    int chunk = p->Block*(p->M-(T%p->M));           // Current spot is our T modulus M
-    if (chunk>s) chunk = s;                         // Only need to write up to s
-    for (int m=0; m<=(s-1)/p->N; m++) *abOut(c, (T+m)%p->M) = 1;        // Set the flag for output overwrite
-    memcpy(anOut(c,T%p->M,0), data, chunk*sizeof(float)); data+=chunk; s-=chunk;
-    if (s==0) return;
-    memcpy(anOut(c,0    ,0), data, s    *sizeof(float));
-}
-
