@@ -146,13 +146,10 @@ private:
         int32_t     Latency;                // Not used in this directly, but IO engine may set it
         float       Data[1];                // Member used to calculate the size of the Map structure prior to the audio data
 
-/*      float       afIn[I][M][N];          // The Input time domain data           I*M*N       Data
-        float       afOut[O][M][N];         // The Output time domain data          O*M*N       Data + ( I     )*M*N
-        float       afX[I][M][2N];          // The buffer of F domain data          I*M*N*2     Data + ( I +  O)*M*N
-        float       afT[F][M][N];           // The time domain filter coefficients  F*M*N       Data + (3I +  O)*M*N
-        float       afY[O][2N];             // The buffers for MAC for filter out   O*N*2       Data + (3I +  O + F)*M*N
-        float       afy[O][2N];             // Working buffer for output            O*N*2       Data + (3I +  O + F)*M*N + 2*O*N
-        sizeof(Map) + ((3I + O + F)*M*N + 4*O*N)*sizeof(float)
+/*      float       afIn[I][M][N];          // The Input time domain data           I*2*N       Data
+        float       afOut[O][M][N];         // The Output time domain data          O*2*N       Data +  I     *2*N
+        float       afT[F][M][N];           // The time domain filter coefficients  F*M*N       Data + (I + O)*2*N  
+        sizeof(Map) + ((I + O)*2*N F*MBlock)*sizeof(float)
 */
     };
 
@@ -164,16 +161,23 @@ private:
     uint64_t LastT;
     int32_t FFTorder;               // Order of the FFT
 
+private:   
+    float* pfX;            // The buffer of F domain data        I*M*N*2
+    float* pfY;            // The buffers for MAC for filter out   O*N*2
+    float* pfy;            // Working buffer for output            O*N*2
+
 public:
-    float*  afIn    (int i, int m, int n) { return            p->Data +                            i   *p->MN + m*p->N   + n; };
-    float*  afOut   (int o, int m, int n) { return            p->Data + (  p->I                  + o  )*p->MN + m*p->N   + n; };
-    float*  afX     (int i, int m, int n) { return            p->Data + (  p->I +   p->O         + i*2)*p->MN + m*p->N*2 + n; };
+    float*  afIn    (int i, int n)        { return p->Data +      i         *2*p->N   + n; };
+    float*  afOut   (int o, int n)        { return p->Data + ( p->I +    o )*2*p->N   + n; };
+    float*  afT     (int f, int n)        { return p->Data + ( p->I + p->O )*2*p->N   + f*p->MN + n; };
+    size_t   Size   (int I, int O, int M, int N, int F) { return sizeof(Map) +((I + O)*2*N + F*M*N)*sizeof(float); };
+
+
+    float*  afX     (int i, int m, int n) { return pfX + i*2*p->MN + m*p->N*2 + n; };
     float*  afH     (int f, int m, int n) { static float zero[2*MaxBlock];  if (p->Filt[f].H==nullptr) return zero; else return p->Filt[f].H + m*p->N*2 + n; };
-    float*  afT     (int f, int n)        { return            p->Data + (3*p->I +   p->O + f          )*p->MN            + n; };
-    float*  afY     (int o, int n)        { return            p->Data + (3*p->I +   p->O + p->F       )*p->MN +               + o*p->N*2 + n; };
-    float*  afy     (int o, int n)        { return            p->Data + (3*p->I +   p->O + p->F       )*p->MN + 2*p->O*p->N   + o*p->N*2 + n; };
+    float*  afY     (int o, int n)        { return pfY + o*p->N*2 + n; };
+    float*  afy     (int o, int n)        { return pfy + o*p->N*2 + n; };
     
-    size_t   Size   (int I, int O, int M, int N, int F) { return sizeof(Map) +((3*I + O + F)*M*N + 4*O*N)*sizeof(float); };
 
 public:
     ThreadedDSP();          

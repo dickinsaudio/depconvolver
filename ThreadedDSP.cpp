@@ -32,6 +32,9 @@ ThreadedDSP::ThreadedDSP()
     LastT = 0;
     done = 0;
     processing = false;
+    pfX = 0;
+    pfY = 0;
+    pfy = 0;
 }
 
 bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, int xfade, const char* sShared, int threads, int latency)
@@ -87,6 +90,11 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     p->Latency = latency;
     p->Threads = threads;
     nThreads = threads;     // Keep a local copy for the owner so it cannot be changed
+
+    pfX = (float *)malloc(2*p->I*p->M*p->N*sizeof(float));
+    pfY = (float *)malloc(2*p->O*p->N*sizeof(float));
+    pfy = (float *)malloc(2*p->O*p->N*sizeof(float));
+    
     afTemp = (float *)malloc(2*p->N*sizeof(float));
     anTemp = (int32_t *)malloc(p->N*sizeof(int32_t));
 
@@ -200,6 +208,11 @@ void ThreadedDSP::Destroy(void)
     if (pFFTSpec) ippsFree(pFFTSpec);   pFFTSpec = nullptr;
     if (afTemp)   free(afTemp);         afTemp   = nullptr;
     if (anTemp)   free(anTemp);         anTemp   = nullptr;
+
+    if (pfX)      free(pfX);            pfX      = nullptr;
+    if (pfY)      free(pfY);            pfY      = nullptr;
+    if (pfy)      free(pfy);            pfy      = nullptr;
+
     bOwner = false;
 
 }
@@ -211,7 +224,7 @@ void ThreadedDSP::Input(int i, int32_t* data, int stride)
     std::unique_lock<std::mutex> lk(mtx);
     if (!loading) { loading=true; p->T++; p->t = (p->t+1)%p->M; assert(p->T % p->M == p->t); }; // Advance
     lk.unlock();
-    float   *pfIn   = afIn(i,p->t,0);
+    float   *pfIn   = afIn(i, 2*p->N - p->Block);
     for (int n=0; n<p->Block; n++)
     {
         *pfIn  = (float)*data / 2147483648.0F;
@@ -228,7 +241,7 @@ void ThreadedDSP::Output(int o, int32_t *data, int stride)
     }
 
     int32_t *pN  = anTemp;
-    ippsConvert_32f32s_Sfs(afOut(o,p->t,0), pN, p->Block, ippRndZero, -31);
+    ippsConvert_32f32s_Sfs(afOut(o,p->Block), pN, p->Block, ippRndZero, -31);
     for (int n=0; n<p->Block; n++) 
     {
         *data = *pN++;
@@ -300,10 +313,9 @@ void ThreadedDSP::ThreadProc(int ID)
         start.wait(lk); lk.unlock();                                    // Wait on CV signal to start processing
         for (int n=ID; n<p->I; n+=nThreads) 			                // Do this over all of the inputs
 		{				
-            ippsMaxAbs_32f(afIn(n,p->t,0),p->Block,&fMax);              // Get the peak
-            ippsMove_32f(afIn(n,(p->t-1+p->M)%p->M,0),   afTemp,         p->Block);	// 
-            ippsMove_32f(afIn(n, p->t             ,0),   afTemp+p->Block,p->Block);	// Move two blocks of audio into FFT buffer
-            ippsFFTFwd_RToPerm_32f(afTemp, afX(n,p->t,0), pFFT, pFFTBuf);  // And do the FFT
+            ippsMaxAbs_32f(afIn(n,2*p->N-p->Block),p->Block, &fMax);               // Get the peak
+            ippsFFTFwd_RToPerm_32f(afIn(n,0), afX(n,p->t,0), pFFT, pFFTBuf);        // Do the FFT
+            ippsMove_32f(afIn(n,p->Block), afIn(n,0), 2*p->N-p->Block);             // Slide the input data buffer back
             if (fMax>p->PeakIn[n]) p->PeakIn[n]=fMax; else p->PeakIn[n] = 0.99F*p->PeakIn[n];  // Bit of smoothing
         }
         lk.lock(); if (++done==nThreads) middle.notify_all(); else middle.wait(lk); lk.unlock();    // Resync
@@ -326,11 +338,16 @@ void ThreadedDSP::ThreadProc(int ID)
 				}
 			}
  //         ippsMove_32f(afX(n,p->t,0), afY(n,0), 2*p->N);                  // FFT LOOPBACK
+            ippsMove_32f(afOut(n,p->Block), afOut(n,0), 2*p->N-p->Block);	// Slide the output data buffer back
             ippsFFTInv_PermToR_32f(afY(n,0), afTemp, pFFT,pFFTBuf);		    // Do the inverse FFT and stick it in the
-			ippsMove_32f(afTemp+p->N, afy(n,0), p->N);                      // correct output
-            ippsMove_32f  (afy(n,0),           afOut(n,p->t,0),p->Block);   // Get the latest filter output
-//          ippsMove_32f(afIn(n,p->t,0),afOut(n,p->t,0),p->Block);          // INPUT AUDIO LOOPBACK
-            ippsMaxAbs_32f(afOut(n,p->t,0),p->Block,&fMax);                 // Get the peak
+            if (p->N != p->Block)
+            {
+             	//ippsMul_32f_I(window, afTemp+p->Block), 2*p->N-p->Block);		        // Apply the window
+                ippsAdd_32f_I(afTemp+p->Block,afOut(n,p->Block),2*p->N-2*p->Block);     // Add the overlap
+            }
+            ippsMove_32f(afTemp+2*p->N-p->Block, afOut(n,2*p->N-p->Block),p->Block);    // Move the new data and fade out bit
+//          ippsMove_32f(afIn(n,p->Block),afOut(n,p->Block),p->Block);      // INPUT AUDIO LOOPBACK
+            ippsMaxAbs_32f(afOut(n,p->Block),p->Block,&fMax);               // Get the peak
             if (fMax>p->PeakOut[n]) p->PeakOut[n]=fMax; else p->PeakOut[n] = 0.99F*p->PeakOut[n];  // Bit of smoothing
 		}
         Chrono_ExecTime(ID).time();
