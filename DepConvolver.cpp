@@ -59,6 +59,9 @@ void dep(void)
 
 	if (!daes67.connect("DanteEP")) { fprintf(stderr,"Cannot open Dante\n"); exit(1); };
 
+	// TODO  Fix this for situations when the XFade/2 is not equal to the block size
+	if (DSP.BlockSize() % daes67.get()->clock.period != 0) { fprintf(stderr,"Block size must be a multiple of the Dante period\n"); exit(1); };
+
 	struct sched_param param;
 	param.sched_priority = sched_get_priority_max(SCHED_FIFO)-60;
     int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
@@ -139,6 +142,7 @@ int main(int argc, char * argv[])
 	// PARSE COMMAND LINE OPTIONS
 	bool bClear=false, bReset=false, bDSP=false, bSilent=false, bLogY=false;
 	int  nDSP[]={ 16, 16, 64, 32, 144, 1, 1}, nTestLength=0;
+	int  nFadeWindow=0;
 	int  nFilterSet=-1;
 	const char *sFile="";
 
@@ -157,8 +161,9 @@ int main(int argc, char * argv[])
 			case 'd' : bDSP=true;    for (int n=0;n<7;n++) { argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",nDSP+n); }; break; 
 			case 'x' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nTestLength); break; 
 			case 'f' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nFilterSet); break;
+			case 'w' : argv++; argc--; if (!argc) break; sscanf(argv[0],"%d",&nFadeWindow); break;
 			case 'k' : bKill=true; break;
-			default: printf("Argument Error : Usage  \nDepConvolver [ -fnnn ] [ -s(ilent) -c(lear) -(r)eset -l(ogY) -d(sp) rx tx block blocks latency filters threads -x testlength -(k)ill ] filter_file\n"); exit(0);
+			default: printf("Argument Error : Usage  \nDepConvolver [ -w(indow) n ] [ -f(ilterset) n ] [ -s(ilent) -c(lear) -(r)eset -l(ogY) -d(sp) rx tx block blocks latency filters threads -x testlength -(k)ill ] filter_file\n"); exit(0);
 		}
 		else { sFile=argv[0]; break; };
 	}
@@ -170,7 +175,7 @@ int main(int argc, char * argv[])
 	struct winsize w;
 	char *s = (char *)calloc(1024*256,sizeof(char));
 
-	if ( ( bDSP && !DSP.Create(nDSP[2],nDSP[3],nDSP[0],nDSP[1],nDSP[5],0,SHM_NAME,nDSP[6],nDSP[4])) ||
+	if ( ( bDSP && !DSP.Create(nDSP[2],nDSP[3],nDSP[0],nDSP[1],nDSP[5],nFadeWindow,SHM_NAME,nDSP[6],nDSP[4])) ||
 	     (!bDSP && !DSP.Attach(SHM_NAME) ) )	
 	{	std::cerr << "Unable to " << (bDSP?"create":"attach") << " shared memory for Convolver at " << SHM_NAME << std::endl; exit(0); };
 
@@ -247,7 +252,7 @@ int main(int argc, char * argv[])
 		printf("%s",s);
 	}
 	usleep(50000);
-	if (!DSP.Owner() && DSP.Running()) printf("DSP STATE %12ld Rx=%d Tx=%d N=%d M=%d L=%d F=%d T=%d   Filters=%d UsedTaps=%d\n",DSP.Count(), DSP.Inputs(),DSP.Outputs(),DSP.BlockSize(),DSP.Blocks(),DSP.Latency(),DSP.Filters(),DSP.Threads(),DSP.Filters(),DSP.Taps());
+	if (!DSP.Owner() && DSP.Running()) printf("DSP STATE %12ld Rx=%d Tx=%d B=%d M=%d L=%d F=%d T=%d   Filters=%d UsedTaps=%d  (FFT=%d  XFADE=%d)\n",DSP.Count(), DSP.Inputs(),DSP.Outputs(),DSP.BlockSize(),DSP.Blocks(),DSP.Latency(),DSP.Filters(),DSP.Threads(),DSP.Filters(),DSP.Taps(),DSP.FFTSize(),DSP.CrossFade());
 	if (!bKill)	std::cerr << "Unexpected Fail : Possibly Insufficient CPU for sustaining DSP" << std::endl;
 	Debug("Main loop exited and finishing normally");
 	return 0;

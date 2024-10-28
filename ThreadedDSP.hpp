@@ -133,6 +133,8 @@ private:
         int64_t     T;                      // Number of blocks processed
         int32_t     MBlock;
         int32_t     MN;
+        float       GainIn[MaxChannels];    // Input gains
+        float       GainOut[MaxChannels];   // Output gains
         float       PeakIn[MaxChannels];    // Input peak values
         float       PeakOut[MaxChannels];   // Output peak values
         Filter      Filt[MaxFilters];       // Current active Filter details
@@ -148,7 +150,7 @@ private:
 
 /*      float       afIn[I][M][N];          // The Input time domain data           I*2*N       Data
         float       afOut[O][M][N];         // The Output time domain data          O*2*N       Data +  I     *2*N
-        float       afT[F][M][N];           // The time domain filter coefficients  F*M*N       Data + (I + O)*2*N  
+        float       afT[F][M][N];           // The time domain filter coefficients  F*MBlock    Data + (I + O)*2*N  
         sizeof(Map) + ((I + O)*2*N F*MBlock)*sizeof(float)
 */
     };
@@ -159,17 +161,17 @@ private:
     size_t  nSize;
     Map*    p;         
     uint64_t LastT;
-    int32_t FFTorder;               // Order of the FFT
 
 private:   
     float* pfX;            // The buffer of F domain data        I*M*N*2
     float* pfY;            // The buffers for MAC for filter out   O*N*2
+    float* pW;             // The window for the output overlap    2*N - Block
 
 public:
     float*  afIn    (int i, int n)        { return p->Data +      i         *2*p->N   + n; };
     float*  afOut   (int o, int n)        { return p->Data + ( p->I +    o )*2*p->N   + n; };
-    float*  afT     (int f, int n)        { return p->Data + ( p->I + p->O )*2*p->N   + f*p->MN + n; };
-    size_t   Size   (int I, int O, int M, int N, int F) { return sizeof(Map) +((I + O)*2*N + F*M*N)*sizeof(float); };
+    float*  afT     (int f, int n)        { return p->Data + ( p->I + p->O )*2*p->N   + f*p->MBlock + n; };
+    size_t   Size   (int I, int O, int M, int N, int F, int B) { return sizeof(Map) +((I + O)*2*N + F*M*B)*sizeof(float); };
 
 
     float*  afX     (int i, int m, int n) { return pfX + i*2*p->MN + m*p->N*2 + n; };
@@ -210,6 +212,8 @@ public:
     int     Inputs()    { if (!p) return 0; return p->I; };
     int     Outputs()   { if (!p) return 0; return p->O; };
     int     BlockSize() { if (!p) return 0; return p->Block; };
+    int     FFTSize()   { if (!p) return 0; return p->N; };
+    int     CrossFade() { if (!p) return 0; return 2*(p->N - p->Block); };
     int     Blocks()    { if (!p) return 0; return p->M; };
     int     BlockAt()   { if (!p) return 0; return p->t; };
     int     Filters()   { if (!p) return 0; int f=p->F; for (int n=0; n<p->F; n++) if (p->Filt[n].BLen) f--; return f; };
@@ -225,8 +229,13 @@ public:
     float   PeakIn(int n)       { if (!p || n<0 || n>p->I) return 0; return p->PeakIn[n]; };
     float   PeakOut(int n)      { if (!p || n<0 || n>p->O) return 0; return p->PeakOut[n]; };
     bool    LoadFilter      (int in, int out, int length=0, float *pFilt=0);
-    void    GetFilter       (int in, int out, int maxlen, float *data);
-    int     GetFilterLength (int in, int out);
+
+    float   GetGainIn(int n)  { if (!p || n<0 || n>p->I) return 0; return p->GainIn[n]; };
+    float   GetGainOut(int n) { if (!p || n<0 || n>p->O) return 0; return p->GainOut[n]; };
+    void    SetGainIn(int n, float f)  { if (!p || n<0 || n>p->I) return; p->GainIn[n] = f;  };
+    void    SetGainOut(int n, float f) { if (!p || n<0 || n>p->O) return; p->GainOut[n] = f; };
+    void    SetGainsIn(float* fIn)     { if (!p) return; for (int n=0; n<p->I; n++) p->GainIn[n] = fIn[n]; };
+    void    SetGainsOut(float* fOut)   { if (!p) return; for (int n=0; n<p->O; n++) p->GainOut[n] = fOut[n]; };
 
     int     GetFilterSet    ()      { return p->Filt_Active; };
     int     SetFilterSet    (int n) 
@@ -255,7 +264,6 @@ public:
 
 private:
     const int nRate = 48000;            // Maybe add an API to change later
-    float   *afTemp;                    // Local buffer for filter upload
     int32_t *anTemp;                    // Local buffer for data download
 	Ipp8u *pFFTSpec, *pFFTInit, *pFFTBuf;
 	IppsFFTSpec_R_32f *pFFT;

@@ -38,7 +38,6 @@ ThreadedDSP::ThreadedDSP()
 
 bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, int xfade, const char* sShared, int threads, int latency)
 {
-    assert(xfade==0);                       // Not yet supported
     if (hMem || p)  return false;           // We are already created or attached
 
     if (block<32  || block>MaxBlock)           return false;
@@ -49,9 +48,13 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     if (sShared == nullptr)                    return false;
     if (threads<1 || threads>32)               return false;
 
-    int N = block+xfade/2;
-   // assert((logf((float)N)/logf(2.0F))-(int)(logf((float)N)/logf(2.0F)+0.5));       // FFT block size must be power of 2 for IPP
-    FFTorder = (int)(logf((float)N)/logf(2.0F)+1.5);
+    int N = block + xfade / 2;
+    N--; N |= N >> 1; N |= N >> 2; N |= N >> 4; N |= N >> 8; N++;   // Make it the next power of 2
+    xfade = std::min(2*(N - block),block);
+
+    printf("CREATING CONVOLVER N=%d  BLOCK=%d  XFADE=%d    BURDEN=%.0f%%   UTILIZATION=%.0f%%\n",N,block,xfade,100.0F-100.0F*block*block/N/N,100.0F*(block+block+xfade)/(2*N));
+
+    int FFTorder = (int)(logf((float)N) / logf(2.0F) + 1.5);
   
 #ifdef __linux__
     if (sShared[0]!='/') { sMem[0]='/'; strncpy(sMem+1,sShared,254); } else strncpy(sMem, sShared, 255);
@@ -59,7 +62,7 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     hMem = (void *)(long)shm_open(sMem, O_RDWR | O_CREAT | O_EXCL,  S_IRWXU | S_IRWXG | S_IRWXO);
     umask(old_mask);
     if (hMem==(void *)(long)(-1)) { hMem = 0; sMem[0]=0; return false; };
-    nSize = Size(in, out, blocks, block+xfade/2, filters);
+    nSize = Size(in, out, blocks, block+xfade/2, filters, block);
     if (ftruncate((int)(long)hMem,nSize)==-1) { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
     p = (ThreadedDSP::Map *)mmap(NULL,nSize,PROT_READ|PROT_WRITE,MAP_SHARED, (int)(long)hMem, 0);
     if (p==NULL) { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
@@ -79,7 +82,7 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     memset(p,0,nSize);
     bOwner = true;
     p->Block = block; 
-    p->N     = block+xfade/2; 
+    p->N     = N; 
     p->M     = blocks; 
     p->I     = in; 
     p->O     = out;
@@ -92,8 +95,18 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
 
     pfX = (float *)malloc(2*p->I*p->M*p->N*sizeof(float));
     pfY = (float *)malloc(2*p->O*p->N*sizeof(float));
+
+    pW  = (float *)malloc((2*p->N - p->Block)*sizeof(float));
+
+    for (int n=0;        n<xfade;    n++) pW[n]          = 0.5F - 0.5F*cosf(3.14159265358979323846F*((float)n+0.5)/xfade);
+    for (int n=xfade;    n<p->Block; n++) pW[n]          = 1.0F;
+    for (int n=0;        n<xfade;    n++) pW[n+p->Block] = 0.5F + 0.5F*cosf(3.14159265358979323846F*((float)n+0.5)/xfade);
+
+    for (int n=0; n<p->I; n++) p->GainIn[n] = 1.0F;
+    for (int n=0; n<p->O; n++) p->GainOut[n] = 1.0F;
+
+    //for (int n=0; n<2*N-p->Block; n++) printf("%2d %5.3f\n",n,pW[n]);
     
-    afTemp = (float *)malloc(2*p->N*sizeof(float));
     anTemp = (int32_t *)malloc(p->N*sizeof(int32_t));
 
     Filt_Set[0] = new Filter[p->F]();
@@ -135,8 +148,8 @@ bool ThreadedDSP::Attach(const char* sShared)
     if (hMem==(void *)(long)(-1)) {  sMem[0]=0; return false; };      // Does not exist
     nSize = lseek((int)(long)hMem, 0, SEEK_END);
     p = (ThreadedDSP::Map *)mmap(NULL,nSize,PROT_READ|PROT_WRITE,MAP_SHARED, (int)(long)hMem, 0);
-    if (p==NULL)                                     { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
-    if (nSize != Size(p->I, p->O, p->M, p->N, p->F)) { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
+    if (p==NULL)                                               { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
+    if (nSize != Size(p->I, p->O, p->M, p->N, p->F, p->Block)) { shm_unlink(sMem); hMem=0; sMem[0]=0; nSize=0; return false; };
 #else
     wchar_t wc[64];
     mbstowcs_s(0, wc, 63, sShared, 63);
@@ -144,7 +157,7 @@ bool ThreadedDSP::Attach(const char* sShared)
     if (hMem==0) return false;                                                                      // to see if it exists
     p = (Map *)MapViewOfFile(hMem, FILE_MAP_ALL_ACCESS, 0, 0, 0);                                   //
     if (p==NULL || p->bRunning==false) { CloseHandle(hMem); return false; };                        //
-    nSize = Size(p->I, p->O, p->M, p->N, p->F);
+    nSize = Size(p->I, p->O, p->M, p->N, p->F, p->Block);                                           // Get the full size
     UnmapViewOfFile(p); CloseHandle(hMem);                                                          // Close this
     hMem = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, (DWORD)nSize, wc);      // Then open it at the full size
     if (hMem==NULL) { nSize=0; return false; };
@@ -152,15 +165,7 @@ bool ThreadedDSP::Attach(const char* sShared)
     if (p==NULL) { CloseHandle(hMem); hMem=0; nSize=0; return false; };
 #endif
     nThreads = p->Threads;
-    afTemp = (float   *)malloc(2*p->N*sizeof(float));
     anTemp = (int32_t *)malloc(  p->N*sizeof(int32_t));
-	int sizeSpec, sizeInit, sizeBuf;
-    FFTorder = (int)(logf((float)p->N)/logf(2.0F)+1.5);
-    ippsFFTGetSize_R_32f(FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, &sizeSpec, &sizeInit, &sizeBuf);
-	pFFTSpec = (Ipp8u *)ippsMalloc_8u(sizeSpec);
-	pFFTInit = (Ipp8u *)ippsMalloc_8u(sizeInit);
-	pFFTBuf  = (Ipp8u *)ippsMalloc_8u(sizeBuf);
-	ippsFFTInit_R_32f(&pFFT, FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, pFFTSpec, pFFTInit);
     return true;
 }
 
@@ -204,11 +209,11 @@ void ThreadedDSP::Destroy(void)
 	if (pFFTBuf)  ippsFree(pFFTBuf);    pFFTBuf  = nullptr;
 	if (pFFTInit) ippsFree(pFFTInit);   pFFTInit = nullptr;
     if (pFFTSpec) ippsFree(pFFTSpec);   pFFTSpec = nullptr;
-    if (afTemp)   free(afTemp);         afTemp   = nullptr;
     if (anTemp)   free(anTemp);         anTemp   = nullptr;
 
     if (pfX)      free(pfX);            pfX      = nullptr;
     if (pfY)      free(pfY);            pfY      = nullptr;
+    if (pW)       free(pW);             pW       = nullptr;
 
     bOwner = false;
 
@@ -222,11 +227,10 @@ void ThreadedDSP::Input(int i, int32_t* data, int stride)
     if (!loading) { loading=true; p->T++; p->t = (p->t+1)%p->M; assert(p->T % p->M == p->t); }; // Advance
     lk.unlock();
     float   *pfIn   = afIn(i, 2*p->N - p->Block);
-    for (int n=0; n<p->Block; n++)
-    {
-        *pfIn  = (float)*data / 2147483648.0F;
-        pfIn++; data+=stride;
-    }
+    
+    if (p->GainIn[i] == 1.0F) for (int n=0; n<p->Block; n++)  {  *pfIn  = (float)*data / 2147483648.0F; pfIn++; data+=stride;  }
+    else                      for (int n=0; n<p->Block; n++)  {  *pfIn  = (float)*data / 2147483648.0F * p->GainIn[i];  pfIn++; data+=stride; }
+    // TODO The gain change here on input may cause zippering )
 }
 
 void ThreadedDSP::Output(int o, int32_t *data, int stride) 
@@ -257,7 +261,7 @@ void ThreadedDSP::Finish(void)
     if (processing && p->bRunning) finished.wait(lk); lk.unlock(); // Only wait if not already finished
     float tmax = 0;
     for (int n=0; n<nThreads; n++) tmax = std::max(tmax, Chrono_ExecTime(n).latest());
-    p->Load = (float)tmax / p->N * nRate;
+    p->Load = (float)tmax / p->Block * nRate;
     Chrono_Load().add((int)(p->Load*100+0.5));
 }
 
@@ -296,6 +300,7 @@ void ThreadedDSP::ThreadProc(int ID)
 	float *afTemp = (float *)malloc(2*p->N*sizeof(float));
     float fMax;
 	ippSetDenormAreZeros(true);
+    int FFTorder = (int)(logf((float)p->N) / logf(2.0F) + 1.5);
 	ippsFFTGetSize_R_32f(FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, &sizeSpec, &sizeInit, &sizeBuf);
 	Ipp8u *pFFTSpec = (Ipp8u *)ippsMalloc_8u(sizeSpec);
 	Ipp8u *pFFTInit = (Ipp8u *)ippsMalloc_8u(sizeInit);
@@ -337,9 +342,10 @@ void ThreadedDSP::ThreadProc(int ID)
  //         ippsMove_32f(afX(n,p->t,0), afY(n,0), 2*p->N);                  // FFT LOOPBACK
             ippsMove_32f(afOut(n,p->Block), afOut(n,0), 2*p->N-p->Block);	// Slide the output data buffer back
             ippsFFTInv_PermToR_32f(afY(n,0), afTemp, pFFT,pFFTBuf);		    // Do the inverse FFT and stick it in the
+            if (p->GainOut[n] != 1.0F) ippsMulC_32f_I(p->GainOut[n], afTemp+p->Block, 2*p->N-p->Block); // Apply the gain
             if (p->N != p->Block)
             {
-             	//ippsMul_32f_I(window, afTemp+p->Block), 2*p->N-p->Block);		        // Apply the window
+             	ippsMul_32f_I(pW, afTemp+p->Block, 2*p->N-p->Block);		            // Apply the window
                 ippsAdd_32f_I(afTemp+p->Block,afOut(n,p->Block),2*p->N-2*p->Block);     // Add the overlap
             }
             ippsMove_32f(afTemp+2*p->N-p->Block, afOut(n,2*p->N-p->Block),p->Block);    // Move the new data and fade out bit
@@ -350,7 +356,7 @@ void ThreadedDSP::ThreadProc(int ID)
         Chrono_ExecTime(ID).time();
         lk.lock(); if (--done==0) { finished.notify_one(); processing=false; };// Check if this is the last, and return to start without unlocking
     }
-	ippsFree(pFFTBuf); 
+    ippsFree(pFFTBuf); 
 	ippsFree(pFFTInit);
     ippsFree(pFFTSpec);
     free(afTemp);
@@ -358,10 +364,10 @@ void ThreadedDSP::ThreadProc(int ID)
 
 void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, Ipp8u *pFFTBuf)
 {
-    if (!p->Filt[f].Update) return;
+    if (!bOwner || !p->Filt[f].Update) return;
     int length   = p->Filt[f].Length;
 
-    int M = (length-1)/p->N + 1;
+    int M = (length-1)/p->Block + 1;
     if (length == 0) M = 0;
 
     if (M != p->Filt[f].BLen) 
@@ -376,37 +382,14 @@ void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, I
 	while (length > 0 && m < p->M)
 	{
 		float *pF = afTemp;
-		int     n = p->N;
-		ippsSet_32f(0, afTemp, 2*p->N);
+		int     n = p->Block;                   // Block coefficients in each filter block
+		ippsSet_32f(0, afTemp, 2*p->N);         // But 2*N read samples for the FFT updload
 		while (n > 0 && length > 0) { *pF++ = *pFilt++; length--; n--; };
  		ippsFFTFwd_RToPerm_32f(afTemp, afH(f,m,0), pFFT, pFFTBuf);
 		m++;
     }
 	p->Filt[f].BLen = m;
     p->Filt[f].Update = false;
-}
-
-void ThreadedDSP::GetFilter(int in, int out, int maxlen, float *data)
-{
-    if (!p || !p->bRunning) return;        
-	if (in < 0 || in >= p->I || out < 0 || out >= p->O) return;	
-    if (maxlen==0) return;
-    int f, m=0;
-    for (f = 0; f<p->F; f++) if (p->Filt[f].In == in && p->Filt[f].Out == out) break;          // Check if we have this in->out already
-	if (f == p->F) for (f = 0; f<p->F; f++) if (p->Filt[f].Length == 0) break;                 // Find the first free slot
-    if (f == p->F) return;
-    memcpy(data, afT(f,0), std::min(maxlen,p->Filt[f].Length)*sizeof(float));
-}
-
-int  ThreadedDSP::GetFilterLength(int in, int out)
-{
-    if (!p || !p->bRunning) return 0;        
-	if (in < 0 || in >= p->I || out < 0 || out >= p->O) return 0;	
-    int f, m=0;
-    for (f = 0; f<p->F; f++) if (p->Filt[f].In == in && p->Filt[f].Out == out) break;          // Check if we have this in->out already
-	if (f == p->F) for (f = 0; f<p->F; f++) if (p->Filt[f].Length == 0) break;                 // Find the first free slot
-    if (f == p->F) return 0;
-    return p->Filt[f].Length;
 }
 
 
