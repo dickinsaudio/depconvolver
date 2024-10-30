@@ -105,9 +105,10 @@ public:
     static const int MaxBlock    = 1024;
     static const int MaxLength   = 262144;
     static const int MaxThreads  = 32;
-    static const int MaxFilters  = 8192;
+    static const int MaxFilters  = 2048;
     static const int MaxChronos  = MaxThreads+2+8;    // Spare chronos that can be shared
-    static const int MaxSets     = 256;
+    static const int MaxSets     = 512;
+    static const int MaxGroups   = 2;
 
 private: 
     struct Filter
@@ -137,9 +138,10 @@ private:
         float       GainOut[MaxChannels];   // Output gains
         float       PeakIn[MaxChannels];    // Input peak values
         float       PeakOut[MaxChannels];   // Output peak values
-        Filter      Filt[MaxFilters];       // Current active Filter details
-        int32_t     Filt_Active;            // Active filters
-        int32_t     Filt_Next;              // Next filters to swap in asap
+        Filter      Filt[MaxGroups][MaxFilters];       // Current active Filter details
+        int32_t     Filt_Active[MaxGroups];            // Active filters
+        int32_t     Filt_Next[MaxGroups];              // Next filters to swap in asap
+        bool        ClearAll;               // Flag to clear all filters
         float       Load;                   // An estimate of the load - DSP time / Call time
 
 
@@ -175,7 +177,7 @@ public:
 
 
     float*  afX     (int i, int m, int n) { return pfX + i*2*p->MN + m*p->N*2 + n; };
-    float*  afH     (int f, int m, int n) { static float zero[2*MaxBlock];  if (p->Filt[f].H==nullptr) return zero; else return p->Filt[f].H + m*p->N*2 + n; };
+    float*  afH     (int f, int m, int n, int g=0) { static float zero[2*MaxBlock];  if (p->Filt[g][f].H==nullptr) return zero; else return p->Filt[g][f].H + m*p->N*2 + n; };
     float*  afY     (int o, int n)        { return pfY + o*p->N*2 + n; };
     
 
@@ -216,19 +218,19 @@ public:
     int     CrossFade() { if (!p) return 0; return 2*(p->N - p->Block); };
     int     Blocks()    { if (!p) return 0; return p->M; };
     int     BlockAt()   { if (!p) return 0; return p->t; };
-    int     Filters()   { if (!p) return 0; int f=p->F; for (int n=0; n<p->F; n++) if (p->Filt[n].BLen) f--; return f; };
     uint64_t Count()     { if (!p) return 0; return *(volatile uint64_t *)&p->T; };
     bool    Running()   { if (!p) return 0; return *(volatile bool *)&p->bRunning; };
     bool    Stop()      { if (!p) return 0; p->bRunning=false; return true; };
     float   Load()      { if (!p) return 0; return p->Load; };
     bool    Owner()     { return bOwner; };
-    int     Taps()      { if (!p) return 0; int nTaps=0; int f=p->F; for (int n=0; n<p->F; n++) nTaps+=p->Filt[n].BLen; return nTaps*p->Block; };
+    int     Filters(int g=0)   { if (!p || g<0 || g>=MaxGroups) return 0; int f=0;     for (int n=0; n<p->F; n++) if (p->Filt[g][n].BLen) f++; return f; };
+    int     Taps(int g=0)      { if (!p || g<0 || g>=MaxGroups) return 0; int nTaps=0; for (int n=0; n<p->F; n++) nTaps+=p->Filt[g][n].BLen; return nTaps*p->Block; };
     int     Latency()   { if (!p) return 0; return p->Latency; };
 
     int     Threads()           { if (!p) return 0; return nThreads; };
     float   PeakIn(int n)       { if (!p || n<0 || n>p->I) return 0; return p->PeakIn[n]; };
     float   PeakOut(int n)      { if (!p || n<0 || n>p->O) return 0; return p->PeakOut[n]; };
-    bool    LoadFilter      (int in, int out, int length=0, float *pFilt=0);
+    bool    LoadFilter      (int in, int out, int length=0, float *pFilt=0, int group=0);
 
     float   GetGainIn(int n)  { if (!p || n<0 || n>p->I) return 0; return p->GainIn[n]; };
     float   GetGainOut(int n) { if (!p || n<0 || n>p->O) return 0; return p->GainOut[n]; };
@@ -237,23 +239,16 @@ public:
     void    SetGainsIn(float* fIn)     { if (!p) return; for (int n=0; n<p->I; n++) p->GainIn[n] = fIn[n]; };
     void    SetGainsOut(float* fOut)   { if (!p) return; for (int n=0; n<p->O; n++) p->GainOut[n] = fOut[n]; };
 
-    int     GetFilterSet    ()      { return p->Filt_Active; };
-    int     SetFilterSet    (int n) 
+    int     GetFilterSet    (int g=0)      { if (g<0 || g>MaxGroups) return 0; return p->Filt_Active[g]; };
+    int     SetFilterSet    (int n, int g=0) 
     { 
         if (p==0 || n<0 || n>=MaxSets) return 0;
-        if (p->Filt_Active == n) return n;
-        bool bUpdating = false;
-        while (p->bRunning && !bUpdating) 
-        {
-            for (int f=0; f<p->F; f++) if (p->Filt[f].Update) bUpdating = true;
-            if (!bUpdating) break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        int old = p->Filt_Active; p->Filt_Next = n; 
-        while (p->bRunning && p->Filt_Active != n) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (g<0 || g>=MaxGroups) return 0;
+        if (p->Filt_Active[g] == n) return n;
+        int old = p->Filt_Active[g]; p->Filt_Next[g] = n; 
         return old; 
     };
-
+    void   ClearFilters() { if (p==0 ) return; p->ClearAll = true; };
 
     Histogram& Chrono_CallTime(void)     { return p->Chronos[0]; };
     Histogram& Chrono_ExecTime(int n)    { return p->Chronos[2+n]; };
@@ -274,12 +269,11 @@ private:
     std::atomic<int>        done;       // Count of threads as they complete each stage
     std::atomic<bool>       processing; // Set between Process and Finish
     std::atomic<bool>       loading;    // Set when loading filters
-    void UpdateFilter(int f, float* afTemp, IppsFFTSpec_R_32f *pFFT, Ipp8u *pFFTBuf);
+    void UpdateFilter(int f, float* afTemp, IppsFFTSpec_R_32f *pFFT, Ipp8u *pFFTBuf, int group=0);
     std::chrono::high_resolution_clock::time_point Start;
     void ThreadProc(int ID);
     std::thread     *pThreads[MaxThreads];
     int              nThreads;
 
-    Filter *Filt_Set[MaxSets] = {};
-    bool    Filt_Set_Clear[MaxSets] = {};
+    Filter *Filt_Set[MaxGroups][MaxSets] = {};
 };

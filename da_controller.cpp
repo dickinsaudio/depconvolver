@@ -37,8 +37,10 @@ static void signal_handler(int sig)
 
 int main(int argc, char * argv[])
 {
-	const char *sFile="";
+	const char *sFile[DSP.MaxGroups]= {};
 	bool bReset=false;
+	int  nGroups = 0;
+	
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
 
@@ -51,7 +53,7 @@ int main(int argc, char * argv[])
 			case 'r' : bReset=true;  break;
 			default: printf("Argument Error : Usage  \nda_controller [ -r(eset) ] filter_base\n"); exit(0);
 		}
-		else { sFile=argv[0]; break; };
+		else { sFile[nGroups++]=argv[0]; continue; };
 	}
 
 	signal(SIGINT, signal_handler);
@@ -62,24 +64,26 @@ int main(int argc, char * argv[])
 	if (bReset) 
 	{
 		SetVol(0.0F);
-		for (int s=0; s<DSP.MaxSets; s++) 
-		{
-			DSP.SetFilterSet(s);
-			for (int n=0; n<DSP.Inputs(); n++) for (int m=0; m<DSP.Outputs(); m++) DSP.LoadFilter(n,m); 
-		}
+		DSP.ClearFilters();
 	}
 
-	if (sFile[0])
+	int  nTaps = 0;
+	for (int g=0; g<nGroups; g++)
 	{
+		if (sFile[g]==0) continue;
 		SetVol(0.0F);
 		char filename[512];
+		printf("\nLOADING GROUP %d BASE %s\n",g,sFile[g]);
 		for (int s=0; s<DSP.MaxSets && g_running; s++) 
 		{
-			snprintf(filename,512,"%s_%04d.txt",sFile,s);
+			snprintf(filename,512,"%s_%04d.txt",sFile[g],s);
 			std::ifstream file(filename);  
 			if (!file.is_open()) continue;
-			printf("SET %4d  FILTERS ",s);
-			DSP.SetFilterSet(s);
+			printf("   SET %4d  FILTERS ",s);
+			int nFilters = 0;
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			DSP.SetFilterSet(s, g);
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
 			while (file.is_open() && !file.eof() && g_running)
 			{
 				std::string str;
@@ -92,15 +96,18 @@ int main(int argc, char * argv[])
 					{
 						for (int n=0; n<nLength; n++) file >> Filt[n];
 						DSP.LoadFilter(nIn-1,nOut-1,nLength,Filt);
-						printf(".");
+						printf("."); fflush(stdout);
+						nFilters++;
+						nTaps += nLength;
 					} 
 				}
 			}
-			printf("\n");
-			usleep(10000);
+			printf("   %d\n",nFilters);
+			file.close();
 		}
+		DSP.SetFilterSet(0,g);
 	}
-	DSP.SetFilterSet(0);
+	printf("\nLOADED TOTAL OF %d TAPS\n",nTaps);
 	SetVol(1.0F);
 
 	struct {
@@ -112,7 +119,7 @@ int main(int argc, char * argv[])
 		bool reset;			// Reset to centre on a snap change true/false
 	} Set = { 1, 1, 145, 71, false, false };
 
-	DSP.SetFilterSet(Set.centre);	
+	//DSP.SetFilterSet(Set.centre);	
   	
 	RtMidiIn  midiin;
   	RtMidiOut midiout;
@@ -155,12 +162,24 @@ int main(int argc, char * argv[])
 			continue;
 		}
 
-		int nRot  = Set.centre;
-		int nMode = 0;
-		int nSnap = 0;
-		float fVolume = 1.0F;		// An output volume
-		bool bVolume = false;		// Toggle for the volume button (hold and turn)
-		bool bVolChanged = false;	// Set if the volume has changed
+
+
+		
+		int nRot   = Set.centre;
+
+		int Row1 = 0;
+		int Row2 = 0;
+		int Row3 = 0;
+
+		float fVolume = 1.0F;			// An output volume
+		bool  bVolume = false;			// Toggle for the volume button (hold and turn)
+		bool  bVolChanged = false;		// Set if the volume has changed
+
+		int   nFocus = 0;				// Focus button
+		bool  bFocus = false;			// Toggle for the focus button (hold and turn)
+		bool  bFocusChanged = false;	// Set if the focus has changed
+
+		int   nReverb = 0;				//
 
 		std::vector<unsigned char> message;
 		message.resize(3);
@@ -172,10 +191,9 @@ int main(int argc, char * argv[])
 			midiout.sendMessage(&message);
 		}
 		message[2] = 0x7F;
-		message[1] = 0x36;
-		midiout.sendMessage(&message);
-		message[1] = 0x36+4;
-		midiout.sendMessage(&message);
+		message[1] = 0x36 + Row1; midiout.sendMessage(&message);
+		message[1] = 0x3A + Row2; midiout.sendMessage(&message);
+		message[1] = 0x3E + Row3; midiout.sendMessage(&message);
 
 		while (g_running && DSP.Running())
 		{
@@ -183,11 +201,17 @@ int main(int argc, char * argv[])
 		 	midiin.getMessage(&message);
 			if (message.size()>0)
 			{	
-				printf("Got message   Length %2d   %02x %02x %02x %02x %02x\n",(int)message.size(),message[0],message[1],message[2],message[3],message[4]);
+				//printf("Got message   Length %2d   %02x %02x %02x %02x %02x\n",(int)message.size(),message[0],message[1],message[2],message[3],message[4]);
+					
+				if (message[0]==0x90 && message[1]==0x42)						// TALK BUTTON for change or reset focus
+				{
+					if (message[2]==0x7F) { bFocus = true;  bFocusChanged = false; };
+					if (message[2]==0x00) { bFocus = false; if (!bFocusChanged) nFocus = 0; };
+				}
 
-				if (message[0]==0x90 && message[1]==0x43 && message[2]==0x7F)	nRot = Set.centre;	// DIM button resets the rotation
+				if (message[0]==0x90 && message[1]==0x43 && message[2]==0x7F)	nRot = Set.centre;	// SPKRB button resets the rotation
 
-				if (message[0]==0x90 && message[1]==0x44)
+				if (message[0]==0x90 && message[1]==0x44)											// DIM button for change or reset volume
 				{
 					if (message[2]==0x7F) { bVolume = true;  bVolChanged = false; };
 					if (message[2]==0x00) { bVolume = false; if (!bVolChanged) SetVol(1.0); };
@@ -204,6 +228,13 @@ int main(int argc, char * argv[])
 						SetVol(fVol);
 						bVolChanged = true;
 					}
+					else if (bFocus)
+					{
+						if (message[2] & 0x40) nFocus -= 1;
+						else                   nFocus += 1;
+						nFocus = std::max(-120,std::min(120,nFocus));
+						bFocusChanged = true;
+					}
 					else
 					{
 						if (message[2] & 0x40) nRot -= 1;
@@ -216,40 +247,49 @@ int main(int argc, char * argv[])
 				if (message[0]==0x90 && message[2]==0x7F)
 				{
 					int button = message[1] - 0x36;
-					int mode=nMode, snap=nSnap;
+					int row1 = Row1, row2 = Row2, row3 = Row3;
 
-					if (button>=0 && button<Set.modes)
+					if (button>=0 && button<4)
 					{
-						message[1] = 0x36 + nMode;
+						message[1] = 0x36 + Row1;
 						message[2] = 0x00;
 						midiout.sendMessage(&message);
 						message[1] = 0x36 + button;
 						message[2] = 0x7F;
 						midiout.sendMessage(&message);
-						mode = button;
+						Row1 = button;
 					}
-					if (button>=4 && button<4+Set.snaps)
+					if (button>=4 && button<8)
 					{
-						message[1] = 0x36 + nSnap + 4;
+						message[1] = 0x36 + Row2 + 4;
 						message[2] = 0x00;
 						midiout.sendMessage(&message);
 						message[1] = 0x36 + button;
 						message[2] = 0x7F;
 						midiout.sendMessage(&message);
-						snap = button-4;
+						Row2 = button-4;
+					}
+					if (button>=8 && button<12)
+					{
+						message[1] = 0x36 + Row3 + 8;
+						message[2] = 0x00;
+						midiout.sendMessage(&message);
+						message[1] = 0x36 + button;
+						message[2] = 0x7F;
+						midiout.sendMessage(&message);
+						Row3 = button-8;
 					}
 
-					if (mode!=nMode || snap!=nSnap)
+
+					if (row1 != Row1 || row2 != Row2 || row3 != Row3)
 					{
-						nMode = mode;
-						nSnap = snap;
 						if (Set.reset) nRot = Set.centre;
 					}
 
 				}
 
 				DSP.SetFilterSet(nRot);				
-				printf("MODE %d   SNAP %2d    ROT %2d\n",nMode,nSnap,nRot);
+				printf("ROW1 %d  ROW2 %d  ROW3 %d   FOCUS %4d   ROT %3d   VOL %5.3f \n",Row1,Row2,Row3,nFocus,nRot,fVol);
 			}	
 			else std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			if  (midiin.getPortCount() != nPorts)

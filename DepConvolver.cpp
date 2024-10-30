@@ -234,20 +234,17 @@ int main(int argc, char * argv[])
 
 		meters(s, w.ws_col, w.ws_row-2 - 4*(w.ws_row/5), DSP.Inputs(), DSP.Outputs(), fIn, fOut);
 		int ret = system("clear");
-		printf("%s [%s] Block %12ld   FilterSet %3d Taps %8d\n",DSP.Owner()?"Running":"Attached",DSP.SHM_Name(),DSP.Count(),DSP.GetFilterSet(), DSP.Taps());
-		printf("%s",s);
+		printf("%s [%s] Block %12ld\n",DSP.Owner()?"Running":"Attached",DSP.SHM_Name(),DSP.Count());
+		for (int g=0; g<DSP.MaxGroups; g++) printf("FILTER GROUP %d   SET %3d   FILTERS %4d   TAPS %8d\n",g,DSP.GetFilterSet(g),DSP.Filters(g),DSP.Taps(g));
 
-
-//		Calls.text(w.ws_row/3, s, true);
-//		printf("\n\n%s\n\n",s);
-
+		printf("\n%s\n",s);
 
 		DSP.Chrono_CallTime().text(w.ws_row/5-2, s, bLogY);
-		printf("%s",s);
+		printf("%s\n",s);
 		DSP.Chrono_Load().text(w.ws_row/5-2, s, bLogY);
-		printf("%s",s);
+		printf("%s\n",s);
 		DSP.Chrono_N(0).text(w.ws_row/5-2, s, bLogY);
-		printf("%s",s);
+		printf("%s\n",s);
 		DSP.Chrono_N(1).text(w.ws_row/5-2, s, bLogY);
 		printf("%s",s);
 	}

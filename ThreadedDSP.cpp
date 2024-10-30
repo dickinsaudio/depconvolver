@@ -109,8 +109,6 @@ bool ThreadedDSP::Create(int block, int blocks, int in, int out, int filters, in
     
     anTemp = (int32_t *)malloc(p->N*sizeof(int32_t));
 
-    Filt_Set[0] = new Filter[p->F]();
-
 	int sizeSpec, sizeInit, sizeBuf;
     ippsFFTGetSize_R_32f(FFTorder, IPP_FFT_DIV_INV_BY_N, ippAlgHintNone, &sizeSpec, &sizeInit, &sizeBuf);
 	pFFTSpec = (Ipp8u *)ippsMalloc_8u(sizeSpec);
@@ -184,16 +182,25 @@ void ThreadedDSP::Destroy(void)
         start.notify_all(); std::this_thread::sleep_for(std::chrono::milliseconds(10));
         start.notify_all(); std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-        for (int s=0; s<MaxSets; s++) 
+        for (int g=0; g<MaxGroups; g++) 
         {
-            if (s==p->Filt_Active) continue;
-            if (Filt_Set[s]) 
+            for (int s=0; s<MaxSets; s++) 
             {
-                for (int f=0; f<p->F; f++)  if (Filt_Set[s][f].H) { free(Filt_Set[s][f].H);  Filt_Set[s][f].H = 0; };
-                delete [] Filt_Set[s];
+                if (Filt_Set[g][s]) 
+                {
+                    if (s!=p->Filt_Active[g])
+                    {
+                        for (int f=0; f<p->F; f++)
+                        {
+                            if (Filt_Set[g][s][f].H) { free(Filt_Set[g][s][f].H);  Filt_Set[g][s][f].H = 0; };
+                        }
+                    }
+                    delete [] Filt_Set[g][s];
+                    Filt_Set[g][s] = 0;
+                }
             }
+            for (int f=0; f<p->F; f++)  if (p->Filt[g][f].H) { free(p->Filt[g][f].H);  p->Filt[g][f].H = 0; };
         }
-        for (int f=0; f<p->F; f++)  if (p->Filt[f].H) { free(p->Filt[f].H);  p->Filt[f].H = 0; };
     }
 #ifdef __linux__
     if (p && nSize>0)                  munmap(p, nSize);
@@ -270,14 +277,41 @@ void ThreadedDSP::Process(void)
     if (!p || !bOwner) return;
     Chrono_CallTime().time();
 
-    if (p->Filt_Next != p->Filt_Active) 
+    if (p->ClearAll) 
     {
-        if (Filt_Set[p->Filt_Active]==0) Filt_Set[p->Filt_Active] = new Filter[p->F]();
-        if (Filt_Set[p->Filt_Next]==0)   Filt_Set[p->Filt_Next]   = new Filter[p->F]();
-        for (int f=0; f<p->F; f++) { p->Filt[f].Update = false; Filt_Set[p->Filt_Next][f].Update = false; };    // Avoid stale or lagging updates
-        memcpy(Filt_Set[p->Filt_Active], p->Filt, p->F*sizeof(Filter));
-        memcpy(p->Filt, Filt_Set[p->Filt_Next], p->F*sizeof(Filter));
-        p->Filt_Active = p->Filt_Next;
+        for (int g=0; g<MaxGroups; g++) 
+        {
+            for (int s=0; s<MaxSets; s++) 
+            {
+                if (Filt_Set[g][s]) 
+                {
+                    if (s!=p->Filt_Active[g])
+                    {
+                        for (int f=0; f<p->F; f++)
+                        {
+                            if (Filt_Set[g][s][f].H) { free(Filt_Set[g][s][f].H);  Filt_Set[g][s][f].H = 0; };
+                        }
+                    }
+                    delete [] Filt_Set[g][s];
+                    Filt_Set[g][s] = 0;
+                }
+            }
+            for (int f=0; f<p->F; f++)  if (p->Filt[g][f].H) { free(p->Filt[g][f].H);  p->Filt[g][f].H = 0; p->Filt[g][f].BLen = 0; };
+        }
+        p->ClearAll = false;
+    }
+    
+    for (int g=0; g<MaxGroups; g++)
+    {
+        if (p->Filt_Next[g] != p->Filt_Active[g]) 
+        {
+            if (Filt_Set[g][p->Filt_Active[g]]==0) Filt_Set[g][p->Filt_Active[g]] = new Filter[p->F]();
+            if (Filt_Set[g][p->Filt_Next[g]]==0)   Filt_Set[g][p->Filt_Next[g]]   = new Filter[p->F]();
+            for (int f=0; f<p->F; f++) { p->Filt[g][f].Update = false; Filt_Set[g][p->Filt_Next[g]][f].Update = false; };    // Avoid stale or lagging updates
+            memcpy(Filt_Set[g][p->Filt_Active[g]], p->Filt, p->F*sizeof(Filter));
+            memcpy(p->Filt, Filt_Set[g][p->Filt_Next[g]], p->F*sizeof(Filter));
+            p->Filt_Active[g] = p->Filt_Next[g];
+        }
     }
     for (int n=0; n<nThreads; n++) Chrono_ExecTime(n).start();  
     std::unique_lock<std::mutex> lk(mtx); loading=false; processing=true; start.notify_all(); lk.unlock();  // Start the DSP threads
@@ -326,19 +360,22 @@ void ThreadedDSP::ThreadProc(int ID)
         for (int n=ID; n<p->O; n+=nThreads) 			                // Do this over all of the outputs
 		{				
 			ippsSet_32f (0.0F, afY(n,0), 2*p->N);  				        // Zero MAC buffer
-			for (int f=0; f<p->F; f++) 
-			{															//
-				if (p->Filt[f].Out != n) continue;		        		// Only filters with output channel n
-                UpdateFilter(f, afTemp, pFFT, pFFTBuf);                 // Update the filter - out wont change, but m may
-                for (int m=0; m<p->Filt[f].BLen; m++) 					// Loop over the filter M blocks
-				{
-					int nB = (p->t - m + p->M)%p->M;       		        // and do the MAC
-                    float r0=*afY(n,0), r1=*afY(n,1);                   // Keep this as a multiple of 4 for SIMD optimization
-					ippsAddProduct_32fc((const Ipp32fc *)afX(p->Filt[f].In,nB,0),(const Ipp32fc *)afH(f,m,0), (Ipp32fc *)afY(n,0), p->N);
-					*afY(n,0) = r0 + *afX(p->Filt[f].In,nB,0) * *afH(f,m,0);    // Replace the first bin (DC + Nyquist)
-					*afY(n,1) = r1 + *afX(p->Filt[f].In,nB,1) * *afH(f,m,1);    // with the normal multiply
-				}
-			}
+			for (int g=0; g<MaxGroups; g++)
+            {
+                for (int f=0; f<p->F; f++) 
+                {														//
+                    if (p->Filt[g][f].Out != n) continue;		   		// Only filters with output channel n
+                    if (p->Filt[g][f].Update) UpdateFilter(f, afTemp, pFFT, pFFTBuf, g);             // Update the filter - out wont change, but m may
+                    for (int m=0; m<p->Filt[g][f].BLen; m++) 	        // Loop over the filter M blocks
+                    {
+                        int nB = (p->t - m + p->M)%p->M;       		    // and do the MAC
+                        float r0=*afY(n,0), r1=*afY(n,1);               // Keep this as a multiple of 4 for SIMD optimization
+                        ippsAddProduct_32fc((const Ipp32fc *)afX(p->Filt[g][f].In,nB,0),(const Ipp32fc *)afH(f,m,0), (Ipp32fc *)afY(n,0), p->N);
+                        *afY(n,0) = r0 + *afX(p->Filt[g][f].In,nB,0) * *afH(f,m,0);    // Replace the first bin (DC + Nyquist)
+                        *afY(n,1) = r1 + *afX(p->Filt[g][f].In,nB,1) * *afH(f,m,1);    // with the normal multiply
+                    }
+                }
+            }
  //         ippsMove_32f(afX(n,p->t,0), afY(n,0), 2*p->N);                  // FFT LOOPBACK
             ippsMove_32f(afOut(n,p->Block), afOut(n,0), 2*p->N-p->Block);	// Slide the output data buffer back
             ippsFFTInv_PermToR_32f(afY(n,0), afTemp, pFFT,pFFTBuf);		    // Do the inverse FFT and stick it in the
@@ -362,19 +399,19 @@ void ThreadedDSP::ThreadProc(int ID)
     free(afTemp);
  }
 
-void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, Ipp8u *pFFTBuf)
+void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, Ipp8u *pFFTBuf, int g)
 {
-    if (!bOwner || !p->Filt[f].Update) return;
-    int length   = p->Filt[f].Length;
+    if (!bOwner || !p->Filt[g][f].Update) return;
+    int length   = p->Filt[g][f].Length;
 
     int M = (length-1)/p->Block + 1;
     if (length == 0) M = 0;
 
-    if (M != p->Filt[f].BLen) 
+    if (M != p->Filt[g][f].BLen) 
     {
-        if (p->Filt[f].H) free(p->Filt[f].H);
-        p->Filt[f].H = 0;
-        if (M>0) p->Filt[f].H = (float *)calloc(p->N*M,2*sizeof(float));
+        if (p->Filt[g][f].H) free(p->Filt[g][f].H);
+        p->Filt[g][f].H = 0;
+        if (M>0) p->Filt[g][f].H = (float *)calloc(p->N*M,2*sizeof(float));
     }
 
     float* pFilt = afT(f,0);
@@ -388,33 +425,33 @@ void ThreadedDSP::UpdateFilter(int f,  float* afTemp, IppsFFTSpec_R_32f *pFFT, I
  		ippsFFTFwd_RToPerm_32f(afTemp, afH(f,m,0), pFFT, pFFTBuf);
 		m++;
     }
-	p->Filt[f].BLen = m;
-    p->Filt[f].Update = false;
+	p->Filt[g][f].BLen = m;
+    p->Filt[g][f].Update = false;
 }
 
 
-bool ThreadedDSP::LoadFilter(int in, int out, int length, float *pFilt)
+bool ThreadedDSP::LoadFilter(int in, int out, int length, float *pFilt, int g)
 {
     if (!p || !p->bRunning) return false;        
 	if (in < 0 || in >= p->I || out < 0 || out >= p->O) return false;	
     
     int f, m=0;
     for (f = 0; f<p->F; f++) 
-        if (p->Filt[f].In == in && p->Filt[f].Out == out) break;        // Check if we have this in->out already
+        if (p->Filt[g][f].In == in && p->Filt[g][f].Out == out) break;  // Check if we have this in->out already
     if (f == p->F)                                                      // 
     {                                                                   // If we don't have it
         if (length == 0) return true;                                   //   And if it is being cleared this is OK                                
     	for (f = 0; f<p->F; f++)                                        //
-            if (p->Filt[f].Length==0 && p->Filt[f].BLen==0) break;      //   Otherwise search for a new slot
+            if (p->Filt[g][f].Length==0 && p->Filt[g][f].BLen==0) break;//   Otherwise search for a new slot
         if (f == p->F) return false;                                    //   If none available then return false
     }                                                                   // At this point we have an existing or new slot
     if (length>p->MBlock) length = p->MBlock;
     if (length>0) memcpy(afT(f,0), pFilt, length*sizeof(float));
-    assert(p->Filt[f].BLen == 0 || (p->Filt[f].In==in && p->Filt[f].Out==out));                 // Just to be sure - not swapping live in/out
-    p->Filt[f].In     = in;                 
-    p->Filt[f].Out    = out;
-    p->Filt[f].Length = length;
-    p->Filt[f].Update = true;
+    assert(p->Filt[g][f].BLen == 0 || (p->Filt[g][f].In==in && p->Filt[g][f].Out==out));   // Just to be sure - not swapping live in/out
+    p->Filt[g][f].In     = in;                 
+    p->Filt[g][f].Out    = out;
+    p->Filt[g][f].Length = length;
+    p->Filt[g][f].Update = true;
     return true;
 }
 
