@@ -23,6 +23,9 @@ add_subdirectory(rtmidi)
 add_executable (da_controller "da_controller.cpp" "ThreadedDSP.cpp")
 target_link_libraries(da_controller daes67 rtmidi asound "rt" "pthread")
 
+add_executable (da_authoring "da_authoring.cpp" "ThreadedDSP.cpp")
+target_link_libraries(da_authoring daes67 rtmidi asound "rt" "pthread")
+
 
 if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
     include_directories("/opt/intel/oneapi/ipp/latest/include/ipp")
@@ -32,6 +35,9 @@ if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
     target_link_libraries(da_controller "/opt/intel/oneapi/ipp/latest/lib/libipps.a")
     target_link_libraries(da_controller "/opt/intel/oneapi/ipp/latest/lib/libippcore.a")
     target_link_libraries(da_controller "/opt/intel/oneapi/ipp/latest/lib/libippvm.a")
+    target_link_libraries(da_authoring "/opt/intel/oneapi/ipp/latest/lib/libipps.a")
+    target_link_libraries(da_authoring "/opt/intel/oneapi/ipp/latest/lib/libippcore.a")
+    target_link_libraries(da_authoring "/opt/intel/oneapi/ipp/latest/lib/libippvm.a")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
 #    Will generally get these from DAES67 with potentially different options
 #    SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -mfpu=neon")

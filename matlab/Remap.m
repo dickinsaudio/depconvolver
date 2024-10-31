@@ -21,6 +21,7 @@ function M = Remap_polar(Xp,Yp)
             y = find(Yp(2,:)==0); 
         end;
 
+        if (sum(y)==0) warning("Empty speaker set"); continue; end;
 
         I  = Xp(1,x);           % Finally, just get the angles in and angles out
         O  = Yp(1,y);           %

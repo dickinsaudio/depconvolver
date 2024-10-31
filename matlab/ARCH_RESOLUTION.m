@@ -42,14 +42,18 @@ MODES   = [ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1;    % 19          % 45 Degree 
             0 0 0 0 0 0 1 1 1 1 1 1 1 0 0 0 0 0 0;    % 07
             0 0 0 0 0 0 0 1 1 1 1 1 0 0 0 0 0 0 0; ]; % 05
 
-ENABLE = logical(zeros(size(MODES,1),max(S)));
+ROT  = [ -180:90:180 ];
+ENABLE = logical(zeros(size(MODES,1)*size(ROT,1),max(S)));
 for (n=1:size(MODES,1))
     ENABLE(n,ARCH(find(MODES(n,:)==1))) = 1;
-    ENABLE(n,SURR) = 1;
-    ENABLE(n,ROOF) = 1;    
+    if (sum(ENABLE(n,:))>0)
+%        ENABLE(n,SURR) = 1;
+        ENABLE(n,[33 37 41 45]) = 1;
+        ENABLE(n,ROOF) = 1;    
+    end;
 end;
 
-if (1)
+if (0)
     for (n=1:size(ENABLE,1))
         figure(2); clf;
         plot3(Y(1,find(ENABLE(n,:)==1)),Y(2,find(ENABLE(n,:)==1)), Y(3,find(ENABLE(n,:)==1)),'bo','MarkerSize',15,'MarkerFaceColor','b'); hold on;
@@ -67,3 +71,43 @@ if (1)
         pause;
     end;
 end;
+
+
+%% CREATING THE SPEAKER REMAP
+
+set = 0;
+for (m=1:size(ENABLE,1))
+    for (r=ROT)
+        if (r==180 || r==-180) 
+            R = Remap(-Xp+[r; 0],Yp(:,ENABLE(m,:))); 
+        end;
+        R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:))); 
+        M = zeros(size(R,1),size(ENABLE,2));
+        M(:,ENABLE(m,:)) = R;
+
+        if (~(mean(sum(M'))==1 || mean(sum(M'))==0)) warning ("MISSING SOMETHING FROM INPUT"); keyboard; end;
+        
+        M(:,SG1_T) = M(:,SG1_W);
+        if (sum(sum(M))>0) M(:,SUB) = 1; end;
+
+        file = fopen(sprintf('filters\\ARCH_RESOLUTION\\ARCH_RESOLUTION_%04d.txt',set),'wt');
+        fprintf("SET %3d  MODE %2d  ROTATION %3d\n",set,m,r);
+        filter=1;
+        for (i=1:size(M,1))
+            for (o=1:size(M,2))
+                if (M(i,o)~=0) 
+                    % fprintf("  INPUT %2d OUTPUT %2d  GAIN %5.3f\n",i,o,M(i,o));
+                    PrintFilter2(file,filter,i,o,M(i,o)*EQ{o});
+                    fprintf(file,'\n\n');
+                    filter = filter+1;
+                end;
+            end;
+        end;
+        fclose(file);
+        set = set + 1;
+    end;
+end;
+
+
+
+
