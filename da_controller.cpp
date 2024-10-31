@@ -16,7 +16,7 @@
 #include <daes67.hpp>
 #include <log.hpp>
 #include <RtMidi.h>
-
+#include <math.h>
 
 using namespace DAES67;
 
@@ -25,8 +25,31 @@ using namespace DAES67;
 ThreadedDSP DSP;
 float Filt[DSP.MaxLength]={}; 
 float fVol = 1.0F;
-void SetVol(float f) { fVol = f; for (int n=0; n<DSP.Outputs(); n++) DSP.SetGainOut(n,f); };
+
+int   nFocus = 0;				// Focus button
+
+// FOCUS fprintf("%4.3f, ",(abs(mod(a+180,360)-180)/180).^1.5)
+// BLIND fprintf("%4.3f, ",(abs(mod(a,360)-180)/180).^1.5)
+//                  -45,  -45,  -40,  -40,  -35,  -35,  -25,  -25,  -20,  -20,  -15,  -15,  -10,  -10,   -5,   -5,    5,    5,   10,   10,   15,   15,   20,   20,   25,   25,   35,   35,   40,   40,   45,   45,   60,   60,   60,   60,  120,  120,  120,  120,  240,  240,  240,  240,  300,  300,  300,  300,  -30,    0,   30,   90,  150,  210,  270 };
+float fFocus[] = { 0.12, 0.12, 0.10, 0.10, 0.09, 0.09, 0.05, 0.05, 0.04, 0.04, 0.02, 0.02, 0.01, 0.01, 0.00, 0.00, 0.00, 0.00, 0.01, 0.01, 0.02, 0.02, 0.04, 0.04, 0.05, 0.05, 0.09, 0.09, 0.10, 0.10, 0.12, 0.12, 0.19, 0.19, 0.19, 0.19, 0.54, 0.54, 0.54, 0.54, 0.54, 0.54, 0.54, 0.54, 0.19, 0.19, 0.19, 0.19, 0.07, 0.00, 0.07, 0.35, 0.76, 0.76, 0.35 };
+float fBlind[] = { 0.65, 0.65, 0.69, 0.69, 0.72, 0.72, 0.80, 0.80, 0.84, 0.84, 0.88, 0.88, 0.92, 0.92, 0.96, 0.96, 0.96, 0.96, 0.92, 0.92, 0.88, 0.88, 0.84, 0.84, 0.80, 0.80, 0.72, 0.72, 0.69, 0.69, 0.65, 0.65, 0.54, 0.54, 0.54, 0.54, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.19, 0.54, 0.54, 0.54, 0.54, 0.76, 1.00, 0.76, 0.35, 0.07, 0.07, 0.35 };
+
+void SetVol(float f) 
+{ 
+	fVol = f; 
+	float *fdB;
+	if (nFocus >= 0) fdB = fFocus;
+	else             fdB = fBlind;
+
+	for (int n=0; n<DSP.Outputs(); n++) 
+	{
+		if (n<sizeof(fFocus)/sizeof(float)) DSP.SetGainOut(n,f * powf(10.0, -abs(nFocus)*(fdB[n]+0.1)/20.0F));		// Boost the solo channels by up to 10dB
+		else                                DSP.SetGainOut(n,f); 
+	}
+};
  
+
+
 static bool g_running = true;
 static void signal_handler(int sig)
 {
@@ -175,7 +198,6 @@ int main(int argc, char * argv[])
 		bool  bVolume = false;			// Toggle for the volume button (hold and turn)
 		bool  bVolChanged = false;		// Set if the volume has changed
 
-		int   nFocus = 0;				// Focus button
 		bool  bFocus = false;			// Toggle for the focus button (hold and turn)
 		bool  bFocusChanged = false;	// Set if the focus has changed
 
@@ -206,7 +228,7 @@ int main(int argc, char * argv[])
 				if (message[0]==0x90 && message[1]==0x42)						// TALK BUTTON for change or reset focus
 				{
 					if (message[2]==0x7F) { bFocus = true;  bFocusChanged = false; };
-					if (message[2]==0x00) { bFocus = false; if (!bFocusChanged) nFocus = 0; };
+					if (message[2]==0x00) { bFocus = false; if (!bFocusChanged) { nFocus = 0; SetVol(fVol); }; };
 				}
 
 				if (message[0]==0x90 && message[1]==0x43 && message[2]==0x7F)	nRot = Set.centre;	// SPKRB button resets the rotation
@@ -232,8 +254,9 @@ int main(int argc, char * argv[])
 					{
 						if (message[2] & 0x40) nFocus -= 1;
 						else                   nFocus += 1;
-						nFocus = std::max(-120,std::min(120,nFocus));
+						nFocus = std::max(-200,std::min(200,nFocus));
 						bFocusChanged = true;
+						SetVol(fVol);
 					}
 					else
 					{

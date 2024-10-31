@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 11)
 #SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -D_GLIBCXX_USE_CXX11_ABI=0")
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations -O3 -flto")
 
+find_package(ALSA)
+
 project ("DepConvolver")
 add_subdirectory(daes67)
 
@@ -19,7 +21,7 @@ target_link_libraries(DepConvolver daes67 "rt" "pthread")
 add_subdirectory(rtmidi)
 
 add_executable (da_controller "da_controller.cpp" "ThreadedDSP.cpp")
-target_link_libraries(da_controller daes67 rtmidi "rt" "pthread")
+target_link_libraries(da_controller daes67 rtmidi asound "rt" "pthread")
 
 
 if (CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
