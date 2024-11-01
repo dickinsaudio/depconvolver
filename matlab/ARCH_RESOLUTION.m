@@ -75,13 +75,17 @@ end;
 
 %% CREATING THE SPEAKER REMAP
 
-set = 0;
+set = -1;
 for (m=1:size(ENABLE,1))
     for (r=ROT)
-        if (r==180 || r==-180) 
-            R = Remap(-Xp+[r; 0],Yp(:,ENABLE(m,:))); 
+        set = set+1;
+        if (sum(ENABLE(m,:))==0) R=0; 
+        else  
+            if (r==180 || r==-180) 
+                R = Remap([-Xp(1,:); Xp(2,:)]+[r; 0],Yp(:,ENABLE(m,:))); 
+            end;
+            R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
         end;
-        R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:))); 
         M = zeros(size(R,1),size(ENABLE,2));
         M(:,ENABLE(m,:)) = R;
 
@@ -104,7 +108,6 @@ for (m=1:size(ENABLE,1))
             end;
         end;
         fclose(file);
-        set = set + 1;
     end;
 end;
 

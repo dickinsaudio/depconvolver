@@ -43,7 +43,12 @@ void SetVol(float f)
 
 	for (int n=0; n<DSP.Outputs(); n++) 
 	{
-		if (n<sizeof(fFocus)/sizeof(float)) DSP.SetGainOut(n,f * powf(10.0, -abs(nFocus)*(fdB[n]+0.1)/20.0F));		// Boost the solo channels by up to 10dB
+		
+		if (n<sizeof(fFocus)/sizeof(float))
+		{
+		   if (nFocus<0) DSP.SetGainOut(n,f * powf(10.0, -abs(nFocus)*(fdB[n]-0.2)/20.0F));		// Boost the rear channels by up to 20dB
+		   else          DSP.SetGainOut(n,f * powf(10.0, -abs(nFocus)*(fdB[n]-0.06)/20.0F));    // Boost the cente channels by up to 6
+		}
 		else                                DSP.SetGainOut(n,f); 
 	}
 };
@@ -91,6 +96,7 @@ int main(int argc, char * argv[])
 	}
 
 	int  nTaps = 0;
+	int  nSets[nGroups] = {};
 	for (int g=0; g<nGroups; g++)
 	{
 		if (sFile[g]==0) continue;
@@ -119,28 +125,29 @@ int main(int argc, char * argv[])
 					{
 						for (int n=0; n<nLength; n++) file >> Filt[n];
 						DSP.LoadFilter(nIn-1,nOut-1,nLength,Filt);
-						printf("."); fflush(stdout);
+						if (nFilters%10==0) { printf("."); fflush(stdout); };
 						nFilters++;
 						nTaps += nLength;
 					} 
 				}
 			}
 			printf("   %d\n",nFilters);
+			nSets[g]++;
 			file.close();
 		}
 		DSP.SetFilterSet(0,g);
 	}
-	printf("\nLOADED TOTAL OF %d TAPS\n",nTaps);
+	int nRots     = (nSets[0]/16);
+	int nRotScale = std::max(1,(int)(36.0 / (nRots-1) + 0.5));
+	int nRotMax   = nRots*nRotScale;
+	int nRotCent  = (nRotMax+1)/2 - 1;
+
+    int nReverbs  = nSets[1];
+
+
+	printf("\nLOADED TOTAL OF %d SETS AND %d TAPS  - INFERRING ROTATIONS %d  CENTRE %d  SCALE %d\n",nSets,nTaps,nRots,nRotCent,nRotScale);
 	SetVol(1.0F);
 
-	struct {
-		int  modes;			// Number of modes 					1 .. 4
-		int  snaps;			// Number of snaps in each mode 	1 .. 8
-		int  rotation;		// Rotation total steps				>= 1
-		int  centre;		// Centre of rotation				0 .. rotation-1
-		bool wrap;			// Wrap around						true/false
-		bool reset;			// Reset to centre on a snap change true/false
-	} Set = { 1, 1, 145, 71, false, false };
 
 	//DSP.SetFilterSet(Set.centre);	
   	
@@ -185,14 +192,13 @@ int main(int argc, char * argv[])
 			continue;
 		}
 
-
-
-		
-		int nRot   = Set.centre;
-
+		int nRot = nRotCent;
 		int Row1 = 0;
 		int Row2 = 0;
 		int Row3 = 0;
+
+		bool bWrap = false;
+		bool bReset = false;
 
 		float fVolume = 1.0F;			// An output volume
 		bool  bVolume = false;			// Toggle for the volume button (hold and turn)
@@ -201,6 +207,7 @@ int main(int argc, char * argv[])
 		bool  bFocus = false;			// Toggle for the focus button (hold and turn)
 		bool  bFocusChanged = false;	// Set if the focus has changed
 
+		bool  bReverb = false;			// Toggle for when reverb (fourth on row 3) held down
 		int   nReverb = 0;				//
 
 		std::vector<unsigned char> message;
@@ -217,6 +224,8 @@ int main(int argc, char * argv[])
 		message[1] = 0x3A + Row2; midiout.sendMessage(&message);
 		message[1] = 0x3E + Row3; midiout.sendMessage(&message);
 
+		DSP.SetFilterSet(nRot/nRotScale);		
+
 		while (g_running && DSP.Running())
 		{
 			std::vector<unsigned char> message;
@@ -225,13 +234,15 @@ int main(int argc, char * argv[])
 			{	
 				//printf("Got message   Length %2d   %02x %02x %02x %02x %02x\n",(int)message.size(),message[0],message[1],message[2],message[3],message[4]);
 					
+				int row1 = Row1, row2 = Row2, row3 = Row3, rot = nRot;
+
 				if (message[0]==0x90 && message[1]==0x42)						// TALK BUTTON for change or reset focus
 				{
 					if (message[2]==0x7F) { bFocus = true;  bFocusChanged = false; };
 					if (message[2]==0x00) { bFocus = false; if (!bFocusChanged) { nFocus = 0; SetVol(fVol); }; };
 				}
 
-				if (message[0]==0x90 && message[1]==0x43 && message[2]==0x7F)	nRot = Set.centre;	// SPKRB button resets the rotation
+				if (message[0]==0x90 && message[1]==0x43 && message[2]==0x7F)	nRot = nRotCent;	// SPKRB button resets the rotation
 
 				if (message[0]==0x90 && message[1]==0x44)											// DIM button for change or reset volume
 				{
@@ -254,23 +265,28 @@ int main(int argc, char * argv[])
 					{
 						if (message[2] & 0x40) nFocus -= 1;
 						else                   nFocus += 1;
-						nFocus = std::max(-200,std::min(200,nFocus));
+						nFocus = std::max(-100,std::min(100,nFocus));
 						bFocusChanged = true;
 						SetVol(fVol);
+					}
+					else if (bReverb)
+					{
+						if (message[2] & 0x40) nReverb -= 1;
+						else                   nReverb += 1;
+						nFocus = std::max(0,std::min(nReverbs-1,nReverb));
 					}
 					else
 					{
 						if (message[2] & 0x40) nRot -= 1;
 						else                   nRot += 1;
-						if (Set.wrap) nRot = (nRot+Set.rotation)%Set.rotation;
-						else          nRot = std::max(0,std::min(Set.rotation-1,nRot));
+						if (bWrap) nRot = (nRot+nRotMax)%(nRotMax-1);
+						else       nRot = std::max(0,std::min(nRot,nRotMax-1));
 					}
 				}
 
 				if (message[0]==0x90 && message[2]==0x7F)
 				{
 					int button = message[1] - 0x36;
-					int row1 = Row1, row2 = Row2, row3 = Row3;
 
 					if (button>=0 && button<4)
 					{
@@ -301,18 +317,22 @@ int main(int argc, char * argv[])
 						message[2] = 0x7F;
 						midiout.sendMessage(&message);
 						Row3 = button-8;
+						if (Row3==0) nReverb = 0;
+						if (Row3==1) nRevetb = nReverbs/3;
+						if (Rows==2) nReverb = 2*nReverbs/3;
 					}
 
-
-					if (row1 != Row1 || row2 != Row2 || row3 != Row3)
+					if (row1 != Row1 || row2 != Row2 )
 					{
-						if (Set.reset) nRot = Set.centre;
+						if (bReset) nRot = nRotCentre;
 					}
 
 				}
 
-				DSP.SetFilterSet(nRot);				
-				printf("ROW1 %d  ROW2 %d  ROW3 %d   FOCUS %4d   ROT %3d   VOL %5.3f \n",Row1,Row2,Row3,nFocus,nRot,fVol);
+				int r = nRot/nRotScale;
+				DSP.SetFilterSet(Row1*8*nRots + Row2*nRots + r,0);
+				DSP.SetFilterSet(nReverb,1);		
+				printf("ROW1 %d  ROW2 %d  ROW3 %d   ROT %d    FOCUS %3d   NROT %3d   VOL %5.3f   REVERB %2d  DSP SETS %3d / %3d\n",Row1,Row2,Row3,r,nFocus,nRot,fVol,nReverb,DSP.GetFilterSet(0),DSP.GetFilterSet(1));
 			}	
 			else std::this_thread::sleep_for(std::chrono::milliseconds(1));
 

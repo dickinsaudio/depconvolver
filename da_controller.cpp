@@ -96,7 +96,7 @@ int main(int argc, char * argv[])
 	}
 
 	int  nTaps = 0;
-	int  nSets = 0;
+	int  nSets[nGroups] = {};
 	for (int g=0; g<nGroups; g++)
 	{
 		if (sFile[g]==0) continue;
@@ -113,7 +113,6 @@ int main(int argc, char * argv[])
 			std::this_thread::sleep_for(std::chrono::milliseconds(20));
 			DSP.SetFilterSet(s, g);
 			std::this_thread::sleep_for(std::chrono::milliseconds(20));
-			int nF = 0;
 			while (file.is_open() && !file.eof() && g_running)
 			{
 				std::string str;
@@ -126,20 +125,20 @@ int main(int argc, char * argv[])
 					{
 						for (int n=0; n<nLength; n++) file >> Filt[n];
 						DSP.LoadFilter(nIn-1,nOut-1,nLength,Filt);
-						if (nF++%10==0) printf("."); fflush(stdout);
+						if (nFilters%10==0) { printf("."); fflush(stdout); };
 						nFilters++;
 						nTaps += nLength;
 					} 
 				}
 			}
 			printf("   %d\n",nFilters);
-			nSets++;
+			nSets[g]++;
 			file.close();
 		}
 		DSP.SetFilterSet(0,g);
 	}
-	int nRots     = (nSets/32);
-	int nRotScale = (int)(36.0 / (nRots-1) + 0.5);
+	int nRots     = (nSets[0]/32);
+	int nRotScale = std::max(1,(int)(36.0 / (nRots-1) + 0.5));
 	int nRotMax   = nRots*nRotScale;
 	int nRotCent  = (nRotMax+1)/2 - 1;
 
@@ -189,7 +188,7 @@ int main(int argc, char * argv[])
 			continue;
 		}
 
-		int nRot   = nRotCent;
+		int nRot = nRotCent;
 		int Row1 = 0;
 		int Row2 = 0;
 
@@ -216,7 +215,7 @@ int main(int argc, char * argv[])
 		message[1] = 0x36 + Row1; midiout.sendMessage(&message);
 		message[1] = 0x3A + Row2; midiout.sendMessage(&message);
 
-		//DSP.SetFilterSet(((Row1-1)*8 + Row2 - 1)*nRots + nRot);		
+		DSP.SetFilterSet(nRot/nRotScale);		
 
 		while (g_running && DSP.Running())
 		{
@@ -240,6 +239,12 @@ int main(int argc, char * argv[])
 				{
 					if (message[2]==0x7F) { bVolume = true;  bVolChanged = false; };
 					if (message[2]==0x00) { bVolume = false; if (!bVolChanged) SetVol(1.0); };
+				}
+
+				if (message[0]==0x90 && message[1]==0x41)
+				{
+					if (message[2]==0x7F) bReverb = true;
+					else                  bReverb = false;
 				}
 				
 				if (message[0]==0xB0 && message[1]==0x10)
@@ -306,7 +311,7 @@ int main(int argc, char * argv[])
 				DSP.SetFilterSet(Row1*8*nRots + Row2*nRots + r);		
 				printf("ROW1 %d  ROW2 %d  ROT %d    FOCUS %3d   NROT %3d   VOL %5.3f    DSP SET %d\n",Row1,Row2,r,nFocus,nRot,fVol,DSP.GetFilterSet());
 			}	
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			else std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			
 			static int probe=0;
 			if  ((probe++ % 5000 == 0) && midiin.getPortCount() != nPorts)
