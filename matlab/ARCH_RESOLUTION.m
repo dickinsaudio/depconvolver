@@ -83,8 +83,9 @@ for (m=1:size(ENABLE,1))
         else  
             if (r==180 || r==-180) 
                 R = Remap([-Xp(1,:); Xp(2,:)]+[r; 0],Yp(:,ENABLE(m,:))); 
+            else
+                R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
             end;
-            R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
         end;
         M = zeros(size(R,1),size(ENABLE,2));
         M(:,ENABLE(m,:)) = R;

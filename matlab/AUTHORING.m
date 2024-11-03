@@ -4,7 +4,7 @@ SETUP_20241027;
 
 
 ZOOM = [0.5 1.0 2.0 3.0];
-ZOOM = [ 1.0 ];
+%ZOOM = [ 1.0 ];
 ROT  = [ -180:5:180 ];
 
 EN_27_4 = [ ARCH(logical([1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1])) SURR ROOF ];
@@ -13,8 +13,10 @@ EN_7_4  = [ GENELEC ROOF ];
 EN_7_4  = [ GENELEC(1:3) 33 37 41 45 ROOF ];
 
 ENABLE = logical(zeros(1,max(S)));
-ENABLE(1,EN_23_4)=1;
-ENABLE(2,EN_7_4)=1;
+ENABLE(1,EN_23_4) = 1;                  % Full set of speakers
+ENABLE(2,:)       = ENABLE(1,:);        % This will be mirrored
+ENABLE(3,:)       = 0;                  % Nothing
+ENABLE(4,EN_7_4)  = 1;                  % A comparative downmix
 ENABLE = kron(ENABLE,ones(size(ZOOM,2),1));
 ENABLE = logical(ENABLE);
 
@@ -39,10 +41,18 @@ end;
 
 %% CREATING THE SPEAKER REMAP
 
-set = 0;
+set = -1;
 for (m=1:size(ENABLE,1))
     for (r=ROT)
-        R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
+        set = set+1;
+        if (sum(ENABLE(m,:))==0) R=0; 
+        else  
+            if (m>=5 && m<=8)
+                R = Remap([180-Xp(1,:); Xp(2,:)]+[r; 0],Yp(:,ENABLE(m,:))); 
+            else
+                R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
+            end;
+        end;
         M = zeros(size(R,1),size(ENABLE,2));
         M(:,ENABLE(m,:)) = R;
 
