@@ -53,7 +53,7 @@ for (n=1:size(MODES,1))
     end;
 end;
 
-if (0)
+if (1)
     for (n=1:size(ENABLE,1))
         figure(2); clf;
         plot3(Y(1,find(ENABLE(n,:)==1)),Y(2,find(ENABLE(n,:)==1)), Y(3,find(ENABLE(n,:)==1)),'bo','MarkerSize',15,'MarkerFaceColor','b'); hold on;
