@@ -68,7 +68,7 @@ int main(int argc, char * argv[])
 	const char *sFile[DSP.MaxGroups]= {};
 	bool bReset=false;
 	int  nGroups = 0;
-	
+
 
 	setlogmask(LOG_UPTO(LOG_DEBUG));
 
@@ -137,17 +137,13 @@ int main(int argc, char * argv[])
 		}
 		DSP.SetFilterSet(0,g);
 	}
-	int nRots     = (nSets[0]/16);
-	int nRotScale = std::max(1,(int)(36.0 / (nRots-1) + 0.5));
+	int nRots     = (nSets[0]/4);
+	int nRotScale = 1;
 	int nRotMax   = nRots*nRotScale;
 	int nRotCent  = (nRotMax+1)/2 - 1;
 
-    int nReverbs  = nSets[1];
-
-
 	printf("\nLOADED TOTAL OF %d SETS AND %d TAPS  - INFERRING ROTATIONS %d  CENTRE %d  SCALE %d\n",nSets[0],nTaps,nRots,nRotCent,nRotScale);
 	SetVol(1.0F);
-
 
 	//DSP.SetFilterSet(Set.centre);	
   	
@@ -195,7 +191,6 @@ int main(int argc, char * argv[])
 		int nRot = nRotCent;
 		int Row1 = 0;
 		int Row2 = 0;
-		int Row3 = 0;
 
 		bool bWrap = false;
 		bool bReset = false;
@@ -206,9 +201,6 @@ int main(int argc, char * argv[])
 
 		bool  bFocus = false;			// Toggle for the focus button (hold and turn)
 		bool  bFocusChanged = false;	// Set if the focus has changed
-
-		bool  bReverb = false;			// Toggle for when reverb (fourth on row 3) held down
-		int   nReverb = 0;				//
 
 		std::vector<unsigned char> message;
 		message.resize(3);
@@ -222,7 +214,6 @@ int main(int argc, char * argv[])
 		message[2] = 0x7F;
 		message[1] = 0x36 + Row1; midiout.sendMessage(&message);
 		message[1] = 0x3A + Row2; midiout.sendMessage(&message);
-		message[1] = 0x3E + Row3; midiout.sendMessage(&message);
 
 		DSP.SetFilterSet(nRot/nRotScale);		
 
@@ -233,8 +224,8 @@ int main(int argc, char * argv[])
 			if (message.size()>0)
 			{	
 				//printf("Got message   Length %2d   %02x %02x %02x %02x %02x\n",(int)message.size(),message[0],message[1],message[2],message[3],message[4]);
-					
-				int row1 = Row1, row2 = Row2, row3 = Row3, rot = nRot;
+
+				int row1 = Row1, row2 = Row2, rot = nRot;
 
 				if (message[0]==0x90 && message[1]==0x42)						// TALK BUTTON for change or reset focus
 				{
@@ -269,12 +260,6 @@ int main(int argc, char * argv[])
 						bFocusChanged = true;
 						SetVol(fVol);
 					}
-					else if (bReverb)
-					{
-						if (message[2] & 0x40) nReverb -= 1;
-						else                   nReverb += 1;
-						nFocus = std::max(0,std::min(nReverbs-1,nReverb));
-					}
 					else
 					{
 						if (message[2] & 0x40) nRot -= 1;
@@ -298,44 +283,20 @@ int main(int argc, char * argv[])
 						midiout.sendMessage(&message);
 						Row1 = button;
 					}
-					if (button>=4 && button<8)
-					{
-						message[1] = 0x36 + Row2 + 4;
-						message[2] = 0x00;
-						midiout.sendMessage(&message);
-						message[1] = 0x36 + button;
-						message[2] = 0x7F;
-						midiout.sendMessage(&message);
-						Row2 = button-4;
-					}
-					if (button>=8 && button<12)
-					{
-						message[1] = 0x36 + Row3 + 8;
-						message[2] = 0x00;
-						midiout.sendMessage(&message);
-						message[1] = 0x36 + button;
-						message[2] = 0x7F;
-						midiout.sendMessage(&message);
-						Row3 = button-8;
-						if (Row3==0) nReverb = 0;
-						if (Row3==1) nReverb = nReverbs/3;
-						if (Row3==2) nReverb = 2*nReverbs/3;
-					}
 
 					if (row1 != Row1 || row2 != Row2 )
 					{
+						
 						if (bReset) nRot = nRotCent;
 					}
 
 				}
-
 				int r = nRot/nRotScale;
-				DSP.SetFilterSet(Row1*8*nRots + Row2*nRots + r,0);
-				DSP.SetFilterSet(nReverb,1);		
-				printf("ROW1 %d  ROW2 %d  ROW3 %d   ROT %d    FOCUS %3d   NROT %3d   VOL %5.3f   REVERB %2d  DSP SETS %3d / %3d\n",Row1,Row2,Row3,r,nFocus,nRot,fVol,nReverb,DSP.GetFilterSet(0),DSP.GetFilterSet(1));
+				DSP.SetFilterSet(Row1*nRots + r);		
+				printf("ROW1 %d  ROW2 %d  ROT %d    FOCUS %3d   NROT %3d   VOL %5.3f    DSP SET %d\n",Row1,Row2,r,nFocus,nRot,fVol,DSP.GetFilterSet());
 			}	
 			else std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
+			
 			static int probe=0;
 			if  ((probe++ % 5000 == 0) && midiin.getPortCount() != nPorts)
 			{

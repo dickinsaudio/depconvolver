@@ -18,7 +18,7 @@ hl = conv(hl,impz(b,a,2048));  hl = hl(1:1024);  hl= fade(hl,[0 .1]);
 hh = conv(hh,impz(b,a,2048));  hh = hh(1:1024);  hh= fade(hh,[0 .1]);
 
 
-h_8020 = 0.7*h_8020;
+h_8020 = 0.7*1.16*h_8020;
 hw = conv(hh,h_8020(:,1)); hw = hw(1:1024);  hw = fade(hw,[0 .1]);
 ht = conv(hh,h_8020(:,2)); ht = ht(1:128 );  ht = fade(ht,[0 .1]); 
 hl = fade(hl,[0 .1]);

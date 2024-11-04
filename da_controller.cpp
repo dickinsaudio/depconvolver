@@ -142,7 +142,7 @@ int main(int argc, char * argv[])
 	int nRotMax   = nRots*nRotScale;
 	int nRotCent  = (nRotMax+1)/2 - 1;
 
-	printf("\nLOADED TOTAL OF %d SETS AND %d TAPS  - INFERRING ROTATIONS %d  CENTRE %d  SCALE %d\n",nSets,nTaps,nRots,nRotCent,nRotScale);
+	printf("\nLOADED TOTAL OF %d SETS AND %d TAPS  - INFERRING ROTATIONS %d  CENTRE %d  SCALE %d\n",nSets[0],nTaps,nRots,nRotCent,nRotScale);
 	SetVol(1.0F);
 
 	//DSP.SetFilterSet(Set.centre);	
@@ -239,12 +239,6 @@ int main(int argc, char * argv[])
 				{
 					if (message[2]==0x7F) { bVolume = true;  bVolChanged = false; };
 					if (message[2]==0x00) { bVolume = false; if (!bVolChanged) SetVol(1.0); };
-				}
-
-				if (message[0]==0x90 && message[1]==0x41)
-				{
-					if (message[2]==0x7F) bReverb = true;
-					else                  bReverb = false;
 				}
 				
 				if (message[0]==0xB0 && message[1]==0x10)
