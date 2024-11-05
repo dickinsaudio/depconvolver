@@ -77,23 +77,24 @@ Y   = R * [  cos(Yp(1,:)/180*pi);               % Using Cylinder math for now
              sin(Yp(1,:)/180*pi);
              2*sin(Yp(2,:)/180*pi) ];
 
-figure(1); clf;
-plot3(Y(1,SG1_W),Y(2,SG1_W), Y(3,SG1_W),'bo','MarkerSize',15,'MarkerFaceColor','b'); hold on;
-plot3(Y(1,SG1_T),Y(2,SG1_T), Y(3,SG1_T),'ro','MarkerSize',5,'MarkerFaceColor','r');
-plot3(Y(1,GENELEC),Y(2,GENELEC), Y(3,GENELEC),'gs','MarkerSize',30,'MarkerFaceColor','g');
-plot3(X(1,:),X(2,:), X(3,:),'kx','MarkerSize',5,'MarkerFaceColor','k');
-ax = gca;
-ax.PlotBoxAspectRatio = [1 1 1];
-ax.DataAspectRatioMode = 'manual';
-ax.PlotBoxAspectRatioMode = 'manual';
-ax.CameraPositionMode = 'manual';
-ax.CameraTargetMode = 'manual';
-ax.CameraViewAngleMode = 'manual';
-ax = gca;
-ax.CameraPosition = [30 -10 8];
-ax.CameraTarget = [0 0 0];
-grid on;
-
+if (0)
+    figure(1); clf;
+    plot3(Y(1,SG1_W),Y(2,SG1_W), Y(3,SG1_W),'bo','MarkerSize',15,'MarkerFaceColor','b'); hold on;
+    plot3(Y(1,SG1_T),Y(2,SG1_T), Y(3,SG1_T),'ro','MarkerSize',5,'MarkerFaceColor','r');
+    plot3(Y(1,GENELEC),Y(2,GENELEC), Y(3,GENELEC),'gs','MarkerSize',30,'MarkerFaceColor','g');
+    plot3(X(1,:),X(2,:), X(3,:),'kx','MarkerSize',5,'MarkerFaceColor','k');
+    ax = gca;
+    ax.PlotBoxAspectRatio = [1 1 1];
+    ax.DataAspectRatioMode = 'manual';
+    ax.PlotBoxAspectRatioMode = 'manual';
+    ax.CameraPositionMode = 'manual';
+    ax.CameraTargetMode = 'manual';
+    ax.CameraViewAngleMode = 'manual';
+    ax = gca;
+    ax.CameraPosition = [30 -10 8];
+    ax.CameraTarget = [0 0 0];
+    grid on;
+end;
 
 
 

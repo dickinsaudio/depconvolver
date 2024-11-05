@@ -2,7 +2,7 @@ clear all;
 
 Signal;
 
-X = audioread('20241101_COMO_SETUP_SUB.wav');
+X = audioread('20241105_PARIS_SETUP2.wav');
 X = reshape(X,SweepLength,[]);
 
 Delay = 1200;
@@ -142,13 +142,13 @@ axis([10 24000 -20 20]); grid on;
 
 %% Now to add a crossover
 Fc = 3000;
-[bl, al] = butter(1, .7*Fc/(Fs/2), 'low');   % Low-pass filter coefficients
-[bh, ah] = butter(1, 1.4*Fc/(Fs/2), 'high');  % High-pass filter coefficients
+[bl, al] = butter(2, Fc/(Fs/2), 'low');   % Low-pass filter coefficients
+[bh, ah] = butter(2, Fc/(Fs/2), 'high');  % High-pass filter coefficients
 
-%hl = impz(conv(bl,bl),conv(al,al));
-%hh = impz(conv(bh,bh),conv(ah,ah));
-hl = impz(bl,al,256);
-hh = -impz(bh,ah,256);
+hl = impz(conv(bl,bl),conv(al,al));
+hh = -impz(conv(bh,bh),conv(ah,ah));
+%hl = impz(bl,al,256);
+%hh = -impz(bh,ah,256);
 
 h_filt(:,1:2:48) = filter(hl,1,h_filt(:,1:2:48));
 h_filt(:,2:2:48) = filter(hh,1,h_filt(:,2:2:48));
@@ -205,7 +205,7 @@ Spectra(h_out(:,50),48000,Res,'k'); hold on;
 Spectra(h_out(:,15)+h_out(:,16),48000,Res,'b'); hold on;
 Spectra(h_out(:,17)+h_out(:,18),48000,Res,'r'); hold on;
 Spectra(h_out(:,15)+h_out(:,16)+h_out(:,17)+h_out(:,18),48000,Res,'m'); hold on;
-Spectra(h_out(:,51)+h_out(:,29)+h_out(:,30),48000,Res,'g'); hold on;
+Spectra(h_out(:,49)+h_out(:,29)+h_out(:,30),48000,Res,'g'); hold on;
 Spectra(h_out(:,51)+h_out(:,49),48000,Res,'c'); hold on;
 axis([10 24000 -80 20]); grid on;
 

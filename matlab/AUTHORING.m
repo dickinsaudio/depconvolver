@@ -1,5 +1,5 @@
 clear;
-SETUP_20241027;
+SETUP_20241105;
 
 %% FOR THE AUTHORING TOOL  4 x 4 = 16 MODES
 
@@ -10,13 +10,14 @@ ROT  = [ -180:5:180 ];
 
 EN_27_4 = [ ARCH(logical([1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1])) SURR ROOF ];
 EN_23_4 = [ ARCH(logical([1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1])) 33 37 41 45 ROOF ];
+EN_17_4 = [ ARCH(logical([0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0])) 33 37 41 45 ROOF ];
 EN_7_4  = [ GENELEC ROOF ];
 EN_7_4  = [ GENELEC(1:3) 33 37 41 45 ROOF ];
 
 ENABLE = logical(zeros(1,max(S)));
 ENABLE(1,EN_23_4) = 1;                  % Full set of speakers
 ENABLE(2,:)       = ENABLE(1,:);        % This will be mirrored
-ENABLE(3,:)       = 0;                  % Nothing
+ENABLE(3,EN_17_4) = 1;                  % 45 degrees
 ENABLE(4,EN_7_4)  = 1;                  % A comparative downmix
 ENABLE = logical(ENABLE);
 
@@ -48,7 +49,7 @@ for (m=1:size(ENABLE,1))
             set = set+1;
             if (sum(ENABLE(m,:))==0 || ZOOM(z)==0) R=0; 
             else  
-                if (m>=5 && m<=8)
+                if (m==2)
                     R = Remap([180-Xp(1,:); Xp(2,:)]+[r; 0],Yp(:,ENABLE(m,:))); 
                 else
                     R = Remap(Xp+[r; 0],Yp(:,ENABLE(m,:)));
@@ -59,7 +60,8 @@ for (m=1:size(ENABLE,1))
 
             if (mean(sum(M'))~=1 && mean(sum(M'))~=0) keyboard; end;
         
-            M(:,SG1_T) = sqrt(M(:,SG1_W));
+            M(:,SG1_T) = M(:,SG1_W);
+                       
             M(:,SUB) = 1;
 
             file = fopen(sprintf('Filters\\AUTHORING\\AUTHORING_%04d.txt',set),'wt');
