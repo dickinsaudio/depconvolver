@@ -51,7 +51,7 @@ end;
 
 %%
 for (n=1:length(a))
-    file = fopen(sprintf('Filters\\PAN_JUMP\\PAN_JUMP_%04d.txt',n-1),'wt');
+    file = fopen(sprintf('Filters\\PAN\\PAN_JUMP_%04d.txt',n-1),'wt');
     H = {};
     for (s=1:length(A))
         H{end+1} = { 1, 2*(s-1)+1, 1/length(A)*hl + Mw(s,n)*hw };

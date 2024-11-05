@@ -105,9 +105,9 @@ public:
     static const int MaxBlock    = 1024;
     static const int MaxLength   = 262144;
     static const int MaxThreads  = 32;
-    static const int MaxFilters  = 2048;
+    static const int MaxFilters  = 512;
     static const int MaxChronos  = MaxThreads+2+8;    // Spare chronos that can be shared
-    static const int MaxSets     = 512;
+    static const int MaxSets     = 1512;
     static const int MaxGroups   = 2;
 
 private: 

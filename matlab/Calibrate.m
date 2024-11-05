@@ -205,7 +205,7 @@ Spectra(h_out(:,50),48000,Res,'k'); hold on;
 Spectra(h_out(:,15)+h_out(:,16),48000,Res,'b'); hold on;
 Spectra(h_out(:,17)+h_out(:,18),48000,Res,'r'); hold on;
 Spectra(h_out(:,15)+h_out(:,16)+h_out(:,17)+h_out(:,18),48000,Res,'m'); hold on;
-Spectra(h_out(:,51)+h_out(:,17)+h_out(:,18),48000,Res,'g'); hold on;
+Spectra(h_out(:,51)+h_out(:,29)+h_out(:,30),48000,Res,'g'); hold on;
 Spectra(h_out(:,51)+h_out(:,49),48000,Res,'c'); hold on;
 axis([10 24000 -80 20]); grid on;
 
