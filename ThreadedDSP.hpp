@@ -231,6 +231,7 @@ public:
     float   PeakIn(int n)       { if (!p || n<0 || n>p->I) return 0; return p->PeakIn[n]; };
     float   PeakOut(int n)      { if (!p || n<0 || n>p->O) return 0; return p->PeakOut[n]; };
     bool    LoadFilter      (int in, int out, int length=0, float *pFilt=0, int group=0);
+    int     LoadingFilters()    { int u=0; if (!p) return 0; for (int g=0; g<MaxGroups; g++) for (int n=0; n<p->F; n++) if (p->Filt[g][n].Update) u++;  return u; };
 
     float   GetGainIn(int n)  { if (!p || n<0 || n>p->I) return 0; return p->GainIn[n]; };
     float   GetGainOut(int n) { if (!p || n<0 || n>p->O) return 0; return p->GainOut[n]; };

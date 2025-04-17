@@ -308,8 +308,9 @@ void ThreadedDSP::Process(void)
             if (Filt_Set[g][p->Filt_Active[g]]==0) Filt_Set[g][p->Filt_Active[g]] = new Filter[p->F]();
             if (Filt_Set[g][p->Filt_Next[g]]==0)   Filt_Set[g][p->Filt_Next[g]]   = new Filter[p->F]();
             for (int f=0; f<p->F; f++) { p->Filt[g][f].Update = false; Filt_Set[g][p->Filt_Next[g]][f].Update = false; };    // Avoid stale or lagging updates
-            memcpy(Filt_Set[g][p->Filt_Active[g]], p->Filt, p->F*sizeof(Filter));
-            memcpy(p->Filt, Filt_Set[g][p->Filt_Next[g]], p->F*sizeof(Filter));
+            //printf("FILTER SET GROUP %d %d -> %d\n", g, p->Filt_Active[g], p->Filt_Next[g]);
+            memcpy(Filt_Set[g][p->Filt_Active[g]], p->Filt[g], p->F*sizeof(Filter));
+            memcpy(p->Filt[g], Filt_Set[g][p->Filt_Next[g]], p->F*sizeof(Filter));
             p->Filt_Active[g] = p->Filt_Next[g];
         }
     }

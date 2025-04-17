@@ -202,22 +202,42 @@ int main(int argc, char * argv[])
 	std::ifstream file;  
 	if (sFile[0])
 	{
-		std::ifstream file(sFile);  
+		bool bin = strstr(sFile,".bin")!=NULL;
+		std::ifstream file(sFile, std::ios::in | ( bin ? std::ios::binary : std::ios::ate));
 		if (!file.is_open()) { std::cerr << "WARNING Could not load filters" << std::endl; };
 		while (file.is_open() && !file.eof())
 		{
-			std::string str;
-			std::getline(file,str);
-			if (str.find("FILTER")!=std::string::npos)
+			if (!bin)
 			{
-				int nIn=0, nOut=0, nLength=0;
-				sscanf(str.c_str(),"FILTER %*s Length= %d In= %d Out= %d",&nLength,&nIn,&nOut);
+				std::string str;
+				std::getline(file,str);
+				if (str.find("FILTER")!=std::string::npos)
+				{
+					int nIn=0, nOut=0, nLength=0;
+					sscanf(str.c_str(),"FILTER %*s Length= %d In= %d Out= %d",&nLength,&nIn,&nOut);
+					if (nLength && nIn && nOut && (nLength<1024*1024))
+					{
+						for (int n=0; n<nLength; n++) file >> Filt[n];
+						DSP.LoadFilter(nIn-1,nOut-1,nLength,Filt);
+						printf("FILTER Loaded IN=%-2d  OUT=%-2d  Length=%6d\n",nIn,nOut,nLength);
+					} 
+				}
+			}
+			else
+			{
+				int nMagic=0, nFilt=0, nIn=0, nOut=0, nLength=0;
+				file.read((char *)&nMagic,sizeof(uint32_t));
+				if (nMagic!=0xDAC0EF01) { std::cerr << "ERROR: File is not a valid filter file" << std::endl; break; };
+				file.read((char *)&nFilt,sizeof(uint32_t));
+				file.read((char *)&nLength,sizeof(uint32_t));
+				file.read((char *)&nIn,sizeof(uint32_t));
+				file.read((char *)&nOut,sizeof(uint32_t));
 				if (nLength && nIn && nOut)
 				{
-					for (int n=0; n<nLength; n++) file >> Filt[n];
+					file.read((char *)Filt,nLength*sizeof(float));
 					DSP.LoadFilter(nIn-1,nOut-1,nLength,Filt);
 					printf("FILTER Loaded IN=%-2d  OUT=%-2d  Length=%6d\n",nIn,nOut,nLength);
-				} 
+				}
 			}
 		}
 	}
