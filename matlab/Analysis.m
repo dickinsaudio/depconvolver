@@ -1,54 +1,177 @@
-clear;
+clear all;
 
-Fs = 48000; 
-SweepLength  = 5*Fs;
-SweepGap = 1*Fs;
-SweepSamples = SweepLength - SweepGap;  
-LinearTo = 100;  
-OverRun = 169; 
-FadeOut = 297;
-
-LinearTime  = floor(((SweepSamples)/(1+log((Fs/2+OverRun)/LinearTo))));               % SweepLength of linear sweep
-PhaseDiff   = [linspace(0,LinearTo,LinearTime) logspace(log10(LinearTo),log10(Fs/2+OverRun),SweepSamples-LinearTime)]'/Fs;
-Sweep       = sin(2*pi*cumsum(PhaseDiff));
-Sweep       = Sweep.*[ones(1,SweepSamples-FadeOut) cos((0.5:FadeOut)/FadeOut/2*pi).^2]';
-SweepI      = ifft(1./fft([zeros(50000,1); Sweep; zeros(50000,1)])); 
-SweepI      = SweepI(50000+(-1999:SweepSamples+8000));
-Offsets     = SweepGap/2 + SweepSamples+2000-round(log([ 1 2:5])*(SweepSamples-LinearTime)/(log(Fs/2+OverRun)-log(LinearTo)));  % Offsets for the non linearities
-Sweep       = [ zeros(SweepGap/2,1); Sweep; zeros(SweepGap/2,1) ];
+h = extract_file('20250415_SGR\20250415_SGR_SIGNAL_20CH_SWEEP_48000_5000_1000_100_169_297_LEVELS_20_2.wav');
 
 
-X_direct = audioread('miniDSP_no filter [woofer_tweeter] scaled 1.81E+0  V FSD.wav');
-X_harman = audioread('miniDSP_EQ2_HARMAN [woofer_tweeter] scaled 1.81E+0  V FSD.wav');
-X_8020   = audioread('miniDSP_EQ2_8020 [woofer_tweeter] scaled 1.81E+0  V FSD.wav');
-X_8040   = audioread('miniDSP_EQ2_8040 [woofer_tweeter] scaled 1.81E+0  V FSD.wav');
+Speakers = { 'ADML','ADMR', ...
+             'KLPLL', 'KLPLH', 'KLPRL', 'KLPRH', ...
+             'DASL', 'DASR', ...
+             'SGRLL', 'SGRLM', 'SGRLH', 'SGRRL', 'SGRRM', 'SGRRH', ...
+             'SWL1', 'SWR1', 'SWL2', 'SWR2', 'SWL3', 'SWR3' };
 
-h_direct = Convolve(X_direct,SweepI);
-h_harman = Convolve(X_harman,SweepI);
-h_8020   = Convolve(X_8020,  SweepI);
-h_8040   = Convolve(X_8040,  SweepI);
+for (c=1:length(Speakers)) eval([Speakers{c} '=' sprintf('%d',c) ';']); end;
 
-T = 218145 + (1:2048);
-h_direct = h_direct(T,:);
-h_8020   = h_8020(T,:);
-h_8020   = fade(h_8020,[0 .25]);
 
-h_8020   = h_8020 / mean(sqrt(sum(h_direct.^2)));
+%% Calculate some filters / crossovers etc
+addpath('X:\git\matlab');addpath(genpath('X:\git\matlab'))
 
-H = {};
-for (s=1:24)
-    H{end+1} = { s, 2*(s-1)+1, h_8020(:,1)};
-    H{end+1} = { s, 2*(s-1)+2, h_8020(:,2)};
+load('DBX GLENN.cal');
+h = h(:,:,1,1);
+
+Groups = { { 'Full',           [ ADML  ADMR  ],   40, 4, 18000, 8 }, ...
+           { 'Klipsch Low',    [ KLPLL KLPRL ],   40, 4, 1500,  6 }, ...
+           { 'Klipch High',    [ KLPLH KLPRH ], 1500, 6, 18000, 8 }, ...
+           { 'DA Stand',       [ DASL  DASR  ],  120, 4  18000, 8 }, ... 
+           { 'SGR Low',        [ SGRLL SGRRL ],   40, 4,   800, 6 }, ...
+           { 'SGR Mid',        [ SGRLM SGRRM ],  800, 6,  5000, 6 }, ...
+           { 'SGR High',       [ SGRLH SGRRH ], 5000, 6, 18000, 8 }, ...
+           { 'Sub',            [ SWL1 SWR1 SWL2 SWR2 SWL3 SWR3 ], [],[], 120, 4 } };
+
+LFE   = [ SWL1 SWR1 SWL2 SWR2 SWL3 SWR3 ];
+TWEET = [ KLPLH KLPRH SGRLH SGRRH ]; 
+INV   = [ SGRLL SGRRL DASL ];
+
+%% Create the banded responses and take off the mic response
+Fs = 48000;
+Fb = [ 2 4 6 8 11:3:47 logspace(log10(50),log10(24000),50)];
+H(:,:,:,:,:) = 10*log10(Response(h,48000,0.2,Fb,.002));
+H = H - spline(DBX_GLENN(:,1),DBX_GLENN(:,2),Fb)';
+
+G_nom     =  -10;         % Nominal level 
+
+%% Calculate trims
+H_lev        = mean(H(Fb>500  & Fb<2000,:))      - G_nom;
+H_lev(LFE)   = mean(H(Fb>20   & Fb<100,LFE))     - G_nom;
+H_lev(TWEET) = mean(H(Fb>2000 & Fb<10000,TWEET)) - G_nom;
+h_g        = 10.^(-H_lev/20);
+H     = H + repmat(20*log10(h_g),length(Fb),1);
+
+%% Calculate delays
+z = abs(hilbert(h));
+for (n=1:size(z,2)) delay(n) = sum(cumsum(z(:,n)/max(z(:,n))>0.1)==0); end;
+delay = round(max(delay)-delay+1);
+
+for (n=1:size(h,2))
+    h_t(:,n) = double((1:max(delay))==delay(n));
 end;
 
-file = fopen(sprintf('20241020_HERVICLE_XOVER.txt'),'wt');
-for (n=1:length(H))
-    PrintFilter2(file,n,H{n}{1},H{n}{2},H{n}{3});
-    fprintf(file,'\n\n');
-end;
-fclose(file);
 
-save 20241020_HERVICLE_XOVER h_8020;
+%% Create Targets
+LPF   = inline('20*log10(1./(1+(F./Fc).^O))','F','Fc','O');
+HPF   = inline('20*log10(1./(1+(Fc./(F+.00001)).^O))','F','Fc','O');
+
+L = lines;
+
+for (g=1:length(Groups))
+    t = G_nom + LPF(Fb',Groups{g}{5},Groups{g}{6});
+    if (~isempty(Groups{g}{3}))
+        t = t + HPF(Fb',Groups{g}{3},Groups{g}{4});
+    end;
+    T(:,Groups{g}{2})=repmat(t,1,length(Groups{g}{2}));
+end;
+
+figure(1); clf;
+for (g=1:length(Groups))
+    semilogx(Fb,T(:,Groups{g}{2}(1)),'color',L(g,:),'LineWidth',2); hold on;
+end;
+for (g=1:length(Groups))
+    semilogx(Fb,mean(H(:,Groups{g}{2}),2),'--','color',L(g,:)); 
+end;
+
+axis([10 24000 -40 40]);
+
+%% Create some EQ
+Length  = floor((2048-length(h_t)+1)/8)*8/Fs;
+TI = T-H;
+%TI = TI .* (10.^(T/20) ./ (.1+10.^(T/20)));
+
+
+%ChannelsToTweak = [FULL MID];
+%BandsToTweak    = 1:sum(Fb<100);
+%TI(BandsToTweak,ChannelsToTweak) = TI(BandsToTweak,ChannelsToTweak) - (TI(BandsToTweak,ChannelsToTweak)>=3).*(.5*(TI(BandsToTweak,ChannelsToTweak)-3)) - (TI(BandsToTweak,ChannelsToTweak)>=6).*(.25*(TI(BandsToTweak,ChannelsToTweak)-6)) - (TI(BandsToTweak,ChannelsToTweak)>=9).*(.25*(TI(BandsToTweak,ChannelsToTweak)-9));
+
+ChannelsToTweak = [LFE];
+BandsToTweak    = 1:sum(Fb<30);
+TI(BandsToTweak,ChannelsToTweak) = TI(BandsToTweak,ChannelsToTweak) - (TI(BandsToTweak,ChannelsToTweak)>=6).*(.5*(TI(BandsToTweak,ChannelsToTweak)-6)) - (TI(BandsToTweak,ChannelsToTweak)>=12).*(.25*(TI(BandsToTweak,ChannelsToTweak)-12)) - (TI(BandsToTweak,ChannelsToTweak)>=18).*(.25*(TI(BandsToTweak,ChannelsToTweak)-18));
+TI(:,ChannelsToTweak) = min(6,TI(:,ChannelsToTweak));
+
+
+t = filter([1 -2 1],1,TI);  
+ChannelsToTweak = [1:20];
+%TI(2:end-1,ChannelsToTweak) = TI(2:end-1,ChannelsToTweak) + (1/2)*(t(3:end,ChannelsToTweak)<3).*t(3:end,ChannelsToTweak);
+
+
+
+%%
+
+G = []; 
+for (s=1:size(H,2)) 
+%    G(:,s) = interp1([0:9 Fb],[TI(1,s)*((0:9)'/10); TI(:,s)],(0:Fs/2),'pchip'); 
+    G(:,s) = interp1([0 Fb],[0; TI(:,s)],(0:Fs/2),'pchip'); 
+end;
+G = 10.^([ G; G(end-1:-1:2,:) ]/20);
+h_eq = real(ifft(exp(conj(hilbert(log(G))))));
+h_eq = h_eq(1:Fs*Length,:).*(repmat(  [ones(floor(Fs*7*Length/8),1); cos((0.5:Fs*Length/8)'/Fs/Length*4*pi).^2],1,size(H,2)));
+
+h_eq(:,INV) = -h_eq(:,INV);
+
+h_filt  = Convolve(h_t*diag(h_g), h_eq);
+
+
+% Lets have a look at what we expect
+
+
+%%
+G = interp1(DBX_GLENN(:,1),DBX_GLENN(:,2),0:Fs/2,'pchip')';
+G = 10.^([ -G; -G(end-1:-1:2,:) ]/20);
+h_miceq = real(ifft(exp(conj(hilbert(log(G))))));
+h_miceq = h_miceq(1:Fs*Length,:).*(repmat(  [ones(floor(Fs*7*Length/8),1); cos((0.5:Fs*Length/8)'/Fs/Length*4*pi).^2],1,size(H,2)));
+
+h_out  = Convolve(h(:,:),Convolve(h_filt,h_miceq));
+Res = 0.01;
+figure(2); clf; 
+for (g=1:length(Groups))
+    Spectra(h(:,Groups{g}{2}),48000,Res,'color',L(g,:)); hold on; 
+end;
+axis([10 24000 -40 20]); grid on;
+
+figure(3); clf; 
+for (g=1:length(Groups))
+    Spectra(h_out(:,Groups{g}{2}),48000,Res,'color',L(g,:)); hold on; 
+end;
+axis([10 24000 -40 20]); grid on;
+
+figure(4); clf; 
+for (g=1:length(Groups))
+    Spectra(h_filt(:,Groups{g}{2}),48000,Res,'color',L(g,:)); hold on; 
+end;
+axis([10 24000 -40 20]); grid on;
+
+%%
+figure(5); clf;
+Spectra(h_out(:,[ADML ADMR]),48000,Res,'color',L(1,:)); hold on;
+Spectra(h_out(:,[KLPLL KLPRL])+h_out(:,[KLPLH KLPRH]),48000,Res,'color',L(2,:));
+Spectra(h_out(:,[DASL  DASR ])+h_out(:,[SWL3 SWR3]),48000,Res,'color',L(3,:));
+Spectra(h_out(:,[SGRLL SGRRL])+h_out(:,[SGRLM SGRRM])+h_out(:,[SGRLH SGRRH]),48000,Res,'color',L(4,:));
+axis([10 24000 -40 20]); grid on;
+
+%%
+
+h_deqx = audioread('SGR04112m.wav');
+h_deqx = h_deqx(:,[3 5 7]).*[10 1 1]*10.^(-13/20);
+Spectra([Convolve(h(:,SGRLL),h_deqx(:,1)) + Convolve(h(:,SGRLM),h_deqx(:,2)) + Convolve(h(:,SGRLH),h_deqx(:,3)) ],48000,Res);
+
+%%
+[b a] = butter(2,800/24000); 
+hl = -8*.5*impz(conv(b,b),conv(a,a),2048);
+
+[b a] = butter(2,[800 5000]/24000); 
+hm = 1.5*.5*impz(conv(b,b),conv(a,a),2048);
+
+[b a] = butter(2,5000/24000,'high');
+hh = .5*impz(conv(b,b),conv(a,a),2048);
+
+Spectra(conv(hl,h(:,SGRLL))+conv(hm,h(:,SGRLM))+conv(hh,h(:,SGRLH)),48000,.1); grid on;
 
 
 
