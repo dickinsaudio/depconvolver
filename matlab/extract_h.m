@@ -15,6 +15,8 @@ function [ h delay ] = extract_h(y,Chans,Fs,Length,Gap,Linear,Over,Fade,Levels,h
 
     if (delay==0)                                           % Calculate earliest signal
         [ peak at ] = max(abs(hilbert(hh(:,:))));
+        at = at((1:34)~=4 & (1:34)~=26 & (1:34)~=30);
+        at = at(abs(at-mean(at))<1*std(at));
         delay = min(at) + Length/2 - Offsets(1) - Fs/1000;
         hh = hh(delay+1:end,:,:,:);
     end;

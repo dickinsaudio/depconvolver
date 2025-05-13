@@ -12,7 +12,8 @@ F      = (0:N)/(2*N)*Fs;
 bands  = ceil(2 * log2(Fs/2) / detail);
 bands  = ceil(bands)
 
-Sev    = linspace(0,1,9);
+Sev    = linspace(0,1,5);
+Sev = 0;
 
 for (s=1:length(Sev))
 
