@@ -1,0 +1,102 @@
+# CMakeLists.txt for da_filter library
+cmake_minimum_required(VERSION 3.8)
+
+# Create da_filter library target
+add_library(da_filter STATIC
+    da_filter.hpp
+    da_filter.cpp
+)
+
+# Set C++ standard
+target_compile_features(da_filter PUBLIC cxx_std_17)
+
+# Add compiler flags for optimization
+target_compile_options(da_filter PRIVATE
+    -O3
+    -flto
+    -funsafe-math-optimizations
+)
+
+# Platform-specific configurations
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
+    # ARM/AARCH64 specific settings
+    target_compile_definitions(da_filter PRIVATE ARM_NEON_ENABLED)
+    
+    # Link Ne10 library if available (similar to ThreadedDSP)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Ne10/build/modules/libNE10.a")
+        target_link_libraries(da_filter PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../Ne10/build/modules/libNE10.a")
+        target_include_directories(da_filter PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../Ne10/inc")
+    endif()
+    
+elseif(CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
+    # Intel IPP support (similar to DepConvolver)
+    if(EXISTS "/opt/intel/oneapi/ipp/latest/include/ipp")
+        target_include_directories(da_filter PRIVATE "/opt/intel/oneapi/ipp/latest/include/ipp")
+        target_link_libraries(da_filter PRIVATE 
+            "/opt/intel/oneapi/ipp/latest/lib/libipps.a"
+            "/opt/intel/oneapi/ipp/latest/lib/libippcore.a"
+            "/opt/intel/oneapi/ipp/latest/lib/libippvm.a"
+        )
+        target_compile_definitions(da_filter PRIVATE INTEL_IPP_ENABLED)
+    endif()
+endif()
+
+# Link required system libraries
+target_link_libraries(da_filter PRIVATE 
+    pthread
+    m  # Math library
+)
+
+# Public headers
+target_include_directories(da_filter PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:include>
+)
+
+# Create example executable
+add_executable(da_filter_example
+    da_filter_example.cpp
+)
+
+target_link_libraries(da_filter_example PRIVATE da_filter)
+target_compile_features(da_filter_example PRIVATE cxx_std_17)
+
+# Add the da_filter library to the main DepConvolver target
+if(TARGET DepConvolver)
+    target_link_libraries(DepConvolver da_filter)
+endif()
+
+# Installation rules (optional)
+install(TARGETS da_filter da_filter_example
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+install(FILES da_filter.hpp
+    DESTINATION include
+)
+
+# Print configuration summary
+message(STATUS "")
+message(STATUS "DA_Filter Configuration Summary:")
+message(STATUS "  Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ Standard: C++17")
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
+    message(STATUS "  ARM NEON: Enabled")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Ne10/build/modules/libNE10.a")
+        message(STATUS "  Ne10 library: Found")
+    else()
+        message(STATUS "  Ne10 library: Not found (using fallback implementations)")
+    endif()
+elseif(CMAKE_CXX_LIBRARY_ARCHITECTURE STREQUAL x86_64-linux-gnu)
+    if(EXISTS "/opt/intel/oneapi/ipp/latest/include/ipp")
+        message(STATUS "  Intel IPP: Found")
+    else()
+        message(STATUS "  Intel IPP: Not found (using fallback implementations)")
+    endif()
+endif()
+
+message(STATUS "")
